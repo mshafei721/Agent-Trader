@@ -163,6 +163,8 @@ class ReflectionEngine:
         return False
 
     def maybe_run(self, state) -> bool:
+        closed = self.journal.closed_count()
+        since = closed - getattr(state, "trades_at_last_reflection", 0)
         if not self.is_due(state):
             return False
         try:
@@ -170,7 +172,11 @@ class ReflectionEngine:
         except Exception as exc:  # noqa: BLE001 — reflection must never crash the loop
             log.error("reflection_failed", error=str(exc))
         state.last_reflection_iso = datetime.now(timezone.utc).isoformat()
-        state.trades_at_last_reflection = self.journal.closed_count()
+        # Only the N-trade milestone advances the cumulative counter; a daily-only
+        # reflection refreshes the report without resetting "trades toward next
+        # reflection", so the dashboard shows total closed trades (e.g. 13/20).
+        if since >= self.s.reflection_every_n_trades:
+            state.trades_at_last_reflection = closed
         return True
 
     def run(self) -> dict:

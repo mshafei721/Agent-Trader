@@ -130,7 +130,7 @@ class Settings(BaseSettings):
     defensive_pause_streak: int = Field(default=6)      # consecutive losers -> pause new entries
 
     # ---------- Cadence ----------
-    interval_minutes: int = Field(default=30)
+    interval_minutes: int = Field(default=15)
     skip_weekends: bool = Field(default=True)
     tick_stale_minutes: int = Field(default=10)
 
@@ -141,6 +141,15 @@ class Settings(BaseSettings):
     # ---------- Notifications ----------
     telegram_bot_token: SecretStr | None = Field(default=None)
     telegram_chat_id: str | None = Field(default=None)
+
+    # ---------- Dashboard (localhost monitoring UI) ----------
+    dashboard_enabled: bool = Field(default=True)
+    dashboard_host: str = Field(default="127.0.0.1")   # loopback only — never expose
+    dashboard_port: int = Field(default=8787)
+    dashboard_log_tail_lines: int = Field(default=200)
+    dashboard_positions_cache_seconds: float = Field(default=4.0)
+    # Optional token required on control (POST) actions. Empty/unset = no auth (loopback only).
+    dashboard_token: SecretStr | None = Field(default=None)
 
     # ---------- Derived paths (not from env) ----------
     @property
@@ -168,6 +177,16 @@ class Settings(BaseSettings):
         return DATA_DIR / "heartbeat.json"
 
     @property
+    def watchdog_heartbeat_file(self) -> Path:
+        return DATA_DIR / "watchdog_heartbeat.json"
+
+    @property
+    def account_file(self) -> Path:
+        # Account + open-positions snapshot the supervisor writes each cycle so the
+        # dashboard can show live equity/positions WITHOUT opening its own MT5 link.
+        return DATA_DIR / "account.json"
+
+    @property
     def kill_switch_file(self) -> Path:
         return RUNTIME_DIR / "KILL_SWITCH"
 
@@ -182,7 +201,7 @@ class Settings(BaseSettings):
 
     @field_validator(
         "mt5_login", "mt5_password", "mt5_server", "mt5_terminal_path",
-        "telegram_bot_token", "telegram_chat_id", "llm_api_key",
+        "telegram_bot_token", "telegram_chat_id", "llm_api_key", "dashboard_token",
         mode="before",
     )
     @classmethod

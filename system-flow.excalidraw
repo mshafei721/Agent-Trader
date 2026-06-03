@@ -397,13 +397,13 @@
       "y": 301.0,
       "width": 284,
       "height": 37.5,
-      "text": "ENTRY EVAL  (every 30 min)\nFind a new trade",
+      "text": "ENTRY EVAL  (every 15 min)\nFind a new trade",
       "fontSize": 15,
       "fontFamily": 1,
       "textAlign": "center",
       "verticalAlign": "middle",
       "containerId": "hR",
-      "originalText": "ENTRY EVAL  (every 30 min)\nFind a new trade",
+      "originalText": "ENTRY EVAL  (every 15 min)\nFind a new trade",
       "lineHeight": 1.25
     },
     {

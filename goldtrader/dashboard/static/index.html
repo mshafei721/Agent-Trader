@@ -1,0 +1,685 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>GoldTrader supervisor</title>
+<style>
+  :root {
+    --bg:        oklch(0.980 0.005 264);
+    --bg-hi:     oklch(0.992 0.003 264);
+    --surface:   oklch(0.998 0.0015 264);
+    --surface-2: oklch(0.968 0.005 264);
+    --surface-3: oklch(0.945 0.007 264);
+    --border:    oklch(0.910 0.007 264);
+    --border-2:  oklch(0.868 0.010 264);
+    --text:      oklch(0.330 0.040 263);
+    --muted:     oklch(0.500 0.028 263);
+    --faint:     oklch(0.625 0.020 263);
+    --accent:    oklch(0.575 0.215 278);   /* Stripe blurple #635bff */
+    --accent-2:  oklch(0.640 0.170 278);
+    --gold:      var(--accent);            /* one locked accent (indigo) */
+    --gold-dim:  var(--accent-2);
+    --pos:       oklch(0.585 0.150 150);
+    --neg:       oklch(0.575 0.215 18);
+    --warn:      oklch(0.680 0.150 65);
+    --info:      oklch(0.575 0.190 268);
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Menlo, Consolas, monospace;
+    --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    --r: 12px;
+    --r-sm: 8px;
+    --shadow: 0 0 0 1px oklch(0.33 0.04 263 / 0.04), 0 2px 5px -1px oklch(0.33 0.05 263 / 0.10), 0 1px 3px -1px oklch(0.20 0.04 263 / 0.07);
+    --shadow-sm: 0 1px 2px oklch(0.33 0.05 263 / 0.08), 0 0 0 1px oklch(0.33 0.04 263 / 0.04);
+    --inset-hi: inset 0 1px 0 oklch(1 0 0 / 0.6);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg); color: var(--text); font-family: var(--sans);
+    font-size: 14px; line-height: 1.45; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
+  }
+  /* a faint blurple wash from the top, plus a thin accent rail at the very top edge */
+  body::before {
+    content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+    background: radial-gradient(120% 55% at 50% -8%, oklch(0.93 0.04 278 / 0.45), transparent 68%);
+  }
+  body::after {
+    content: ""; position: fixed; top: 0; left: 0; right: 0; height: 2px; z-index: 40; pointer-events: none;
+    background: linear-gradient(90deg, transparent, var(--accent-2) 22%, var(--accent) 50%, var(--accent-2) 78%, transparent);
+  }
+  .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  .muted { color: var(--muted); } .faint { color: var(--faint); }
+  .pos { color: var(--pos); } .neg { color: var(--neg); }
+  ::-webkit-scrollbar { width: 11px; height: 11px; }
+  ::-webkit-scrollbar-thumb { background: var(--surface-3); border-radius: 7px; border: 3px solid var(--bg); }
+  ::-webkit-scrollbar-thumb:hover { background: var(--border-2); }
+
+  /* ---------- top bar ---------- */
+  header {
+    position: sticky; top: 0; z-index: 30;
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    padding: 14px 26px;
+    background: oklch(0.998 0.0015 264 / 0.82);
+    backdrop-filter: blur(14px) saturate(120%);
+    border-bottom: 1px solid var(--border);
+  }
+  .brand { display: flex; align-items: center; gap: 10px; margin-right: 6px; }
+  .brand .mark { width: 24px; height: 24px; border-radius: 7px; display: grid; place-items: center;
+    background: linear-gradient(150deg, var(--accent), var(--accent-2)); color: oklch(0.99 0.01 278);
+    font-weight: 800; font-size: 14px; box-shadow: 0 2px 8px oklch(0.575 0.215 278 / 0.35); }
+  .brand b { font-weight: 640; letter-spacing: -0.1px; font-size: 15px; color: var(--text); }
+  .brand .sym { font-family: var(--mono); color: var(--accent); font-size: 12px; padding: 2px 8px;
+    border: 1px solid var(--border); border-radius: 6px; background: oklch(0.575 0.215 278 / 0.06); }
+
+  .stats { display: flex; align-items: stretch; gap: 0; margin-left: auto;
+    border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--surface); overflow: hidden; box-shadow: var(--shadow-sm); }
+  .stat { display: flex; flex-direction: column; gap: 2px; padding: 8px 18px; border-left: 1px solid var(--border); }
+  .stat:first-child { border-left: none; }
+  .stat .k { font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.9px; color: var(--faint); }
+  .stat .v { font-family: var(--mono); font-size: 16px; font-variant-numeric: tabular-nums; letter-spacing: -0.3px; color: var(--text); }
+  .stat.hero .v { font-size: 19px; font-weight: 500; }
+
+  .pill {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 5px 12px; border-radius: 999px; font-size: 11.5px; font-weight: 600;
+    letter-spacing: 0.1px; border: 1px solid var(--border); white-space: nowrap; background: var(--surface);
+  }
+  .pill .led { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+  .pill.up   { color: var(--pos);  border-color: oklch(0.585 0.15 150 / 0.35); background: oklch(0.585 0.15 150 / 0.10); }
+  .pill.lag  { color: var(--warn); border-color: oklch(0.68 0.15 65 / 0.4);    background: oklch(0.68 0.15 65 / 0.12); }
+  .pill.bad  { color: var(--neg);  border-color: oklch(0.575 0.215 18 / 0.4);  background: oklch(0.575 0.215 18 / 0.10); }
+  .pill.idle { color: var(--muted); }
+  .pill.live { color: var(--neg);  border-color: oklch(0.575 0.215 18 / 0.5);  background: oklch(0.575 0.215 18 / 0.12); font-weight: 700; }
+  .pill.dry  { color: var(--info); border-color: oklch(0.575 0.19 268 / 0.4);  background: oklch(0.575 0.19 268 / 0.10); }
+  @keyframes breathe { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+  .pill.live .led, .pill.bad .led { animation: breathe 1.7s ease-in-out infinite; }
+
+  /* ---------- toolbar ---------- */
+  .toolbar { display: flex; gap: 9px; flex-wrap: wrap; align-items: center; padding: 13px 26px; border-bottom: 1px solid var(--border); background: oklch(0.992 0.003 264 / 0.6); }
+  .tgroup { display: flex; gap: 9px; }
+  .tsep { width: 1px; align-self: stretch; background: var(--border); margin: 2px 5px; }
+  button.act {
+    font: 540 12.5px/1 var(--sans); color: var(--text);
+    background: var(--surface); border: 1px solid var(--border-2);
+    padding: 9px 15px; border-radius: var(--r-sm); cursor: pointer; box-shadow: var(--shadow-sm);
+    transition: background 150ms cubic-bezier(.22,1,.36,1), border-color 150ms, transform 90ms, color 150ms, box-shadow 150ms;
+  }
+  button.act:hover { background: var(--surface-2); border-color: var(--border-2); box-shadow: var(--shadow); }
+  button.act:active { transform: translateY(1px); }
+  button.act:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  button.act[disabled] { opacity: 0.45; cursor: not-allowed; }
+  button.act.gold { color: oklch(0.99 0.01 278); background: var(--accent); border-color: var(--accent);
+    box-shadow: 0 1px 2px oklch(0.575 0.215 278 / 0.4), inset 0 1px 0 oklch(1 0 0 / 0.18); }
+  button.act.gold:hover { background: oklch(0.535 0.215 278); border-color: oklch(0.535 0.215 278); }
+  button.act.danger:hover { border-color: var(--neg); color: var(--neg); background: oklch(0.575 0.215 18 / 0.08); }
+  button.act.confirm { color: oklch(0.99 0.01 18); border-color: var(--neg); background: var(--neg); }
+
+  /* ---------- layout ---------- */
+  main { display: flex; flex-direction: column; gap: 20px; padding: 22px 26px 52px; max-width: 1180px; margin: 0 auto; }
+  @media (max-width: 1100px) { .stats { margin-left: 0; } }
+  .col { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+  /* loops + reflection sit side-by-side, stacking on narrow screens */
+  .duo { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
+  @media (max-width: 820px) { .duo { grid-template-columns: 1fr; } }
+
+  section.panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); overflow: hidden; box-shadow: var(--shadow); }
+  .panel > h2 {
+    margin: 0; padding: 13px 17px; font-size: 11px; font-weight: 650;
+    text-transform: uppercase; letter-spacing: 0.9px; color: var(--muted);
+    border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 9px; background: oklch(0.985 0.004 264);
+  }
+  .panel > h2::before { content: ""; width: 3px; height: 12px; border-radius: 2px; background: var(--accent); }
+  .panel > h2 .tag { margin-left: auto; font-weight: 500; letter-spacing: 0.1px; text-transform: none; }
+  .panel .body { padding: 16px 17px; }
+
+  /* ---------- log stream ---------- */
+  #logwrap { height: clamp(420px, 64vh, 820px); display: flex; flex-direction: column; }
+  .log-tools { display: flex; gap: 7px; align-items: center; padding: 10px 15px; border-bottom: 1px solid var(--border); flex-wrap: wrap; background: oklch(0.985 0.004 264); }
+  .chip { font: 540 11px/1 var(--sans); padding: 5px 11px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); cursor: pointer; user-select: none; background: var(--surface); transition: background 140ms, color 140ms, border-color 140ms; }
+  .chip:hover { color: var(--text); border-color: var(--border-2); }
+  .chip.on { color: var(--accent); background: oklch(0.575 0.215 278 / 0.08); border-color: oklch(0.575 0.215 278 / 0.35); }
+  .log-spacer { flex: 1; }
+  #log { flex: 1; overflow-y: auto; padding: 9px 12px; display: flex; flex-direction: column; gap: 3px; scroll-behavior: smooth; }
+  .row { display: grid; grid-template-columns: 62px 1fr; gap: 12px; align-items: baseline; padding: 5px 9px; border-radius: var(--r-sm); transition: background 120ms; }
+  .row:hover { background: var(--surface-2); }
+  .row .t { color: var(--faint); font-family: var(--mono); font-size: 11.5px; }
+  .meat { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; min-width: 0; }
+  .ev-badge { display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px; border-radius: 999px;
+    font: 600 11px/1.6 var(--sans); border: 1px solid; white-space: nowrap; letter-spacing: 0.1px; }
+  .ev-badge::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: none; }
+  .kv { color: var(--muted); font-family: var(--mono); font-size: 12px; word-break: break-word; }
+  .kv b { color: var(--accent-2); font-weight: 600; }
+  .cat-trade  { color: var(--pos);  border-color: oklch(0.585 0.15 150 / 0.35); background: oklch(0.585 0.15 150 / 0.09); }
+  .cat-exit   { color: var(--info); border-color: oklch(0.575 0.19 268 / 0.35); background: oklch(0.575 0.19 268 / 0.08); }
+  .cat-llm    { color: var(--accent); border-color: oklch(0.575 0.215 278 / 0.35); background: oklch(0.575 0.215 278 / 0.08); }
+  .cat-warn   { color: var(--warn); border-color: oklch(0.68 0.15 65 / 0.4);    background: oklch(0.68 0.15 65 / 0.12); }
+  .cat-error  { color: var(--neg);  border-color: oklch(0.575 0.215 18 / 0.4);  background: oklch(0.575 0.215 18 / 0.10); }
+  .cat-system { color: var(--muted); border-color: var(--border-2); background: var(--surface-2); }
+  .cat-quiet  { color: var(--faint); border-color: var(--border); background: transparent; }
+  .cat-info   { color: var(--info); border-color: oklch(0.575 0.19 268 / 0.3); background: oklch(0.575 0.19 268 / 0.06); }
+  .row.is-error { background: oklch(0.575 0.215 18 / 0.06); }
+  .row.is-warn  { background: oklch(0.68 0.15 65 / 0.07); }
+
+  /* ---------- tables ---------- */
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  th { text-align: left; font-weight: 600; color: var(--faint); font-size: 10px; text-transform: uppercase; letter-spacing: 0.6px; padding: 6px 9px; border-bottom: 1px solid var(--border); }
+  td { padding: 8px 9px; border-bottom: 1px solid var(--border); font-family: var(--mono); color: var(--text); }
+  tbody tr:hover td { background: var(--surface-2); }
+  tr:last-child td { border-bottom: none; }
+  th.r, td.r { text-align: right; }
+  .side-buy { color: var(--pos); font-weight: 600; } .side-sell { color: var(--neg); font-weight: 600; }
+
+  /* ---------- KPIs ---------- */
+  .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--border); }
+  .kpi { background: var(--surface); padding: 14px 15px; }
+  .kpi .k { font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.7px; color: var(--faint); }
+  .kpi .v { font-family: var(--mono); font-size: 22px; font-variant-numeric: tabular-nums; margin-top: 4px; letter-spacing: -0.5px; color: var(--text); }
+
+  /* ---------- loops (instrument tiles) ---------- */
+  .loops { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--border); }
+  .loop { background: var(--surface); padding: 14px 16px 15px; }
+  .loop .lk { font-size: 10px; text-transform: uppercase; letter-spacing: 0.7px; color: var(--faint); }
+  .loop .lv { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 23px; margin: 6px 0 9px; letter-spacing: -0.8px; line-height: 1; color: var(--text); }
+  .loop .lv.due { color: var(--accent); }
+  .loop .lv.muted { color: var(--faint); font-size: 15px; letter-spacing: 0; }
+  .loop .prog { height: 4px; border-radius: 3px; background: var(--surface-3); overflow: hidden; }
+  .loop .prog > i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--accent-2), var(--accent)); border-radius: 3px; transition: width 950ms linear; }
+  .loop.is-due .prog > i { background: var(--accent); }
+  .loop .lp { font-size: 10px; color: var(--faint); margin-top: 8px; }
+
+  /* ---------- bias ---------- */
+  .bias-head { display: flex; align-items: center; gap: 15px; }
+  .bias-dir { font-family: var(--mono); font-size: 28px; font-weight: 650; letter-spacing: -0.5px; }
+  .bias-dir.BUY { color: var(--pos); } .bias-dir.SELL { color: var(--neg); } .bias-dir.HOLD { color: var(--muted); }
+  .conv { flex: 1; }
+  .conv .lbl { font-size: 11px; color: var(--muted); }
+  .conv .bar { height: 7px; border-radius: 4px; background: var(--surface-3); overflow: hidden; margin-top: 6px; }
+  .conv .bar > i { display: block; height: 100%; background: linear-gradient(90deg, var(--accent-2), var(--accent)); border-radius: 4px; transition: width 450ms cubic-bezier(.22,1,.36,1); }
+  details.rationale { margin-top: 14px; }
+  details.rationale summary { cursor: pointer; color: var(--muted); font-size: 12px; list-style: none; display: inline-flex; align-items: center; gap: 6px; }
+  details.rationale summary::before { content: "›"; transition: transform 160ms; display: inline-block; color: var(--accent); }
+  details.rationale[open] summary::before { transform: rotate(90deg); }
+  details.rationale pre { white-space: pre-wrap; font-family: var(--mono); font-size: 11.5px; color: var(--muted); margin: 10px 0 0; max-height: 260px; overflow-y: auto; line-height: 1.55; padding: 12px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--r-sm); }
+
+  .sugg { font-size: 12.5px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+  .sugg:last-child { border-bottom: none; }
+  .sugg code { font-family: var(--mono); color: var(--accent); }
+  .empty { color: var(--faint); font-size: 12.5px; padding: 6px 0; }
+  .interp { margin-top: 12px; font-size: 12px; color: var(--muted); line-height: 1.55; }
+  .interp .lead { color: var(--text); font-weight: 600; }
+  .reflrow { display: flex; gap: 20px; flex-wrap: wrap; font-family: var(--mono); font-size: 12.5px; }
+  .reflrow b { font-weight: 600; }
+
+  /* ---------- toasts ---------- */
+  #toasts { position: fixed; right: 22px; bottom: 22px; z-index: 50; display: flex; flex-direction: column; gap: 10px; }
+  .toast { background: var(--surface); border: 1px solid var(--border-2); border-radius: 10px; padding: 12px 16px; font-size: 12.5px; box-shadow: var(--shadow); max-width: 390px; color: var(--text); animation: slidein 340ms cubic-bezier(.22,1,.36,1); }
+  .toast.ok { border-color: oklch(0.585 0.15 150 / 0.5); }
+  .toast.err { border-color: var(--neg); }
+  @keyframes slidein { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+
+  .updated { font-size: 11px; color: var(--faint); font-family: var(--mono); }
+  .tag.running { color: var(--accent); display: inline-flex; align-items: center; gap: 7px; }
+  .tag.running::before { content: ""; width: 8px; height: 8px; border-radius: 50%; border: 1.6px solid var(--accent); border-top-color: transparent; animation: spin 0.7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes flash { 0% { box-shadow: 0 0 0 1px var(--accent) inset, 0 0 22px oklch(0.575 0.215 278 / 0.28); } 100% { box-shadow: var(--shadow); } }
+  .flash { animation: flash 1.5s ease-out; }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand"><span class="mark">G</span><b>GoldTrader</b><span class="sym" id="symbol">XAUUSD</span></div>
+  <span class="pill idle" id="health"><span class="led"></span><span>connecting</span></span>
+  <span class="pill idle" id="mode">mode</span>
+  <span class="pill idle" id="kill">kill</span>
+  <span class="pill idle" id="watchdog">watchdog</span>
+  <div class="stats">
+    <div class="stat"><span class="k">Balance</span><span class="v" id="balance">·</span></div>
+    <div class="stat hero"><span class="k">Equity</span><span class="v" id="equity">·</span></div>
+    <div class="stat"><span class="k">Floating</span><span class="v" id="floating">·</span></div>
+    <div class="stat"><span class="k">Heartbeat</span><span class="v" id="hbage">·</span></div>
+  </div>
+</header>
+
+<div class="toolbar" id="toolbar">
+  <div class="tgroup">
+    <button class="act gold" data-act="kill" id="btn-kill">Kill switch</button>
+  </div>
+  <div class="tsep"></div>
+  <div class="tgroup">
+    <button class="act" data-act="bias/refresh">Refresh bias</button>
+    <button class="act" data-act="reflect">Run reflection</button>
+    <button class="act danger" data-act="run-once" data-confirm="1" id="btn-runonce">Run once</button>
+  </div>
+  <div class="tsep"></div>
+  <div class="tgroup">
+    <button class="act danger" data-act="stop" data-confirm="1">Stop supervisor</button>
+    <button class="act danger" data-act="restart" data-confirm="1">Restart</button>
+  </div>
+</div>
+
+<main>
+  <section class="panel" id="bias-panel">
+    <h2>LLM macro bias <span class="tag updated" id="bias-age"></span></h2>
+    <div class="body" id="bias-body"><span class="empty">loading…</span></div>
+  </section>
+
+  <section class="panel">
+    <h2>Open positions <span class="tag updated" id="pos-updated"></span></h2>
+    <div class="body" id="pos-body"><span class="empty">loading…</span></div>
+  </section>
+
+  <div class="duo">
+    <section class="panel">
+      <h2>Loops <span class="tag muted">next fire</span></h2>
+      <div class="loops" id="loops">
+        <div class="loop" id="loop-manage"><div class="lk">Management</div><div class="lv num">·</div><div class="prog"><i></i></div><div class="lp">trade safety</div></div>
+        <div class="loop" id="loop-entry"><div class="lk">Entry eval</div><div class="lv num">·</div><div class="prog"><i></i></div><div class="lp">new trades</div></div>
+        <div class="loop" id="loop-bias"><div class="lk">Macro bias (LLM)</div><div class="lv num">·</div><div class="prog"><i></i></div><div class="lp">or on demand</div></div>
+        <div class="loop" id="loop-reflection"><div class="lk">Reflection</div><div class="lv num">·</div><div class="prog"><i></i></div><div class="lp">self-heal</div></div>
+      </div>
+    </section>
+
+    <section class="panel" id="refl-panel">
+      <h2>Self-heal / reflection <span class="tag updated" id="refl-ts"></span></h2>
+      <div class="body" id="refl-body"><span class="empty">loading…</span></div>
+    </section>
+  </div>
+
+  <section class="panel">
+    <h2>Performance <span class="tag muted" id="perf-window"></span></h2>
+    <div class="kpis">
+      <div class="kpi"><div class="k">Trades</div><div class="v" id="k-trades">·</div></div>
+      <div class="kpi"><div class="k">Win rate</div><div class="v" id="k-win">·</div></div>
+      <div class="kpi"><div class="k">Avg R</div><div class="v" id="k-avgr">·</div></div>
+      <div class="kpi"><div class="k">Net PnL</div><div class="v" id="k-net">·</div></div>
+    </div>
+    <div class="body" id="trades-body"><span class="empty">loading…</span></div>
+  </section>
+
+  <section class="panel" id="logwrap">
+    <div class="log-tools">
+      <span class="chip on" data-lvl="all">all</span>
+      <span class="chip" data-lvl="info">info</span>
+      <span class="chip" data-lvl="warning">warn</span>
+      <span class="chip" data-lvl="error">error</span>
+      <div class="log-spacer"></div>
+      <span class="chip on" id="autoscroll-chip">auto-scroll</span>
+      <span class="chip" id="clear">clear</span>
+    </div>
+    <div id="log"></div>
+  </section>
+</main>
+
+<div id="toasts"></div>
+
+<script>
+(() => {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  let TOKEN = sessionStorage.getItem("gt_token") || null;
+  let CONFIG = {};
+  let loops = null, loopOffset = 0;
+  let lastBiasTs = null, lastReflTs = null;
+  let hbAge = null, hbAt = 0;        // heartbeat age + client clock at last fetch (1s interpolation)
+  let openPosCount = null;           // open-position count (null = unknown / supervisor down)
+  const NA = "·";
+
+  const fmt = (n, d = 2) => (n === null || n === undefined || Number.isNaN(n)) ? NA : Number(n).toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d });
+  const signed = (n, d = 2) => (n === null || n === undefined) ? NA : (n >= 0 ? "+" : "") + fmt(n, d);
+  const pnlClass = (n) => n > 0 ? "pos" : n < 0 ? "neg" : "";
+  const ago = (s) => (s === null || s === undefined) ? NA : s < 90 ? Math.round(s) + "s" : s < 5400 ? Math.round(s / 60) + "m" : Math.round(s / 3600) + "h";
+  function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+
+  function toast(msg, kind = "") {
+    const t = document.createElement("div");
+    t.className = "toast " + kind; t.textContent = msg;
+    $("toasts").appendChild(t);
+    setTimeout(() => { t.style.transition = "opacity .4s"; t.style.opacity = "0"; setTimeout(() => t.remove(), 400); }, 4600);
+  }
+
+  async function api(path, opts = {}) {
+    const headers = opts.headers || {};
+    if (TOKEN) headers["X-Dashboard-Token"] = TOKEN;
+    const r = await fetch(path, { ...opts, headers });
+    if (r.status === 401) {
+      const tok = prompt("Dashboard token required:");
+      if (tok) { TOKEN = tok; sessionStorage.setItem("gt_token", tok); return api(path, opts); }
+      throw new Error("unauthorized");
+    }
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    return r.json();
+  }
+
+  // ---------- status ----------
+  const healthMap = { up: ["up", "healthy"], lagging: ["lag", "lagging"], stale: ["bad", "stale"], down: ["bad", "down"], unknown: ["idle", "unknown"] };
+  async function pollStatus() {
+    try {
+      const s = await api("/api/status");
+      if (s.symbol) $("symbol").textContent = s.symbol;
+      const [hc, hl] = healthMap[s.health] || healthMap.unknown;
+      setPill("health", hc, hl);
+      if (s.dry_run === false) setPill("mode", "live", "LIVE");
+      else if (s.dry_run === true) setPill("mode", "dry", "dry-run");
+      else setPill("mode", "idle", "mode ?");
+      setPill("kill", s.kill_switch ? "bad" : "up", s.kill_switch ? "kill: ON" : "kill: off");
+      const w = s.watchdog || {};
+      const wc = w.health === "up" ? "up" : w.health === "down" ? "idle" : "lag";
+      setPill("watchdog", wc, "watchdog " + (w.health || "?"));
+      hbAge = s.heartbeat_age_s; hbAt = Date.now() / 1000; renderHeartbeat();
+      if (s.loops) { loops = s.loops; loopOffset = s.loops.server_now - (Date.now() / 1000); renderLoops(); }
+      const kb = $("btn-kill");
+      kb.dataset.killon = s.kill_switch ? "off" : "on";
+      kb.textContent = s.kill_switch ? "Resume (clear kill)" : "Kill switch";
+      $("btn-runonce").title = s.dry_run === false ? "LIVE account: can place a real order" : "";
+    } catch (e) { setPill("health", "bad", "offline"); }
+  }
+  function setPill(id, cls, text) {
+    const el = $(id); el.className = "pill " + cls;
+    const led = (cls === "up" || cls === "bad" || cls === "live" || cls === "lag") ? '<span class="led"></span>' : "";
+    el.innerHTML = led + "<span>" + text + "</span>";
+  }
+
+  // ---------- loop countdowns ----------
+  function everyLabel(s) { if (!s) return "?"; if (s < 90) return Math.round(s) + "s"; if (s < 5400) return Math.round(s / 60) + "m"; return Math.round(s / 3600) + "h"; }
+  function remaining(ts) { return (ts === null || ts === undefined) ? null : ts - (Date.now() / 1000 + loopOffset); }
+  function fmtCountdown(sec) {
+    if (sec === null) return ["n/a", "muted"];
+    if (sec <= 0) return ["due", "due"];
+    if (sec < 60) return [Math.ceil(sec) + "s", ""];
+    if (sec < 3600) { const m = Math.floor(sec / 60), r = Math.floor(sec % 60); return [m + "m " + String(r).padStart(2, "0") + "s", ""]; }
+    const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60); return [h + "h " + String(m).padStart(2, "0") + "m", ""];
+  }
+  function setLoop(id, sec, period, sub) {
+    const el = $(id), v = el.querySelector(".lv"), bar = el.querySelector(".prog > i");
+    const [txt, cls] = fmtCountdown(sec);
+    v.textContent = txt; v.className = "lv num " + cls;
+    let frac = 0;
+    if (sec === null) frac = 0;
+    else if (sec <= 0) frac = 1;
+    else if (period) frac = Math.max(0, Math.min(1, (period - sec) / period));
+    bar.style.width = (frac * 100).toFixed(1) + "%";
+    el.classList.toggle("is-due", sec !== null && sec <= 0);
+    if (sub !== undefined) el.querySelector(".lp").textContent = sub;
+  }
+  function renderLoops() {
+    if (!loops) return;
+    // Management runs every cycle for safety + the dashboard snapshot, but it only
+    // manages OPEN trades. When flat, show the tile as idle instead of a countdown.
+    if (openPosCount === 0) {
+      const el = $("loop-manage"), v = el.querySelector(".lv"), bar = el.querySelector(".prog > i");
+      v.textContent = "idle"; v.className = "lv num muted"; bar.style.width = "0%";
+      el.classList.remove("is-due");
+      el.querySelector(".lp").textContent = "no open positions";
+    } else {
+      const sub = openPosCount > 0 ? openPosCount + " open" : "every " + everyLabel(loops.manage.period_s);
+      setLoop("loop-manage", remaining(loops.manage.next_ts), loops.manage.period_s, sub);
+    }
+    setLoop("loop-entry", remaining(loops.entry.next_ts), loops.entry.period_s, "every " + everyLabel(loops.entry.period_s));
+    setLoop("loop-bias", remaining(loops.bias.next_ts), loops.bias.period_s, "every " + everyLabel(loops.bias.period_s) + " or on demand");
+    const r = loops.reflection || {}, rl = $("loop-reflection"), v = rl.querySelector(".lv"), bar = rl.querySelector(".prog > i");
+    if (r.since_trades === undefined) { v.textContent = NA; v.className = "lv num muted"; bar.style.width = "0%"; return; }
+    const due = (r.since_trades >= r.every_n) || r.daily_pending;
+    v.textContent = r.since_trades + "/" + r.every_n; v.className = "lv num" + (due ? " due" : "");
+    bar.style.width = Math.min(100, (r.since_trades / Math.max(1, r.every_n)) * 100).toFixed(0) + "%";
+    rl.classList.toggle("is-due", due);
+    rl.querySelector(".lp").textContent = (due ? "due now" : "closed trades") + (r.daily_pending ? " · daily pending" : "");
+  }
+
+  // Tick the heartbeat age by interpolating elapsed client time since the last poll,
+  // so it advances by 1s (sawtooth 0->~60) instead of jumping on the 5s poll.
+  function renderHeartbeat() {
+    if (hbAge === null || hbAge === undefined) { $("hbage").textContent = NA; return; }
+    $("hbage").textContent = ago(hbAge + (Date.now() / 1000 - hbAt));
+  }
+
+  // ---------- positions ----------
+  async function pollPositions() {
+    try {
+      const p = await api("/api/positions");
+      openPosCount = p.available ? (p.positions ? p.positions.length : 0) : null;
+      renderLoops();
+      if (p.balance !== undefined) $("balance").textContent = fmt(p.balance);
+      if (p.equity !== undefined) $("equity").textContent = fmt(p.equity);
+      const fl = $("floating");
+      if (p.floating_pnl !== undefined) { fl.textContent = signed(p.floating_pnl); fl.className = "v num " + pnlClass(p.floating_pnl); }
+      const body = $("pos-body"), tag = $("pos-updated");
+      if (!p.available) { tag.textContent = ""; body.innerHTML = '<span class="empty">' + esc(p.error || "unavailable") + "</span>"; return; }
+      tag.textContent = p.stale ? "stale (" + ago(p.age_s) + ")" : new Date().toLocaleTimeString();
+      tag.style.color = p.stale ? "var(--warn)" : "var(--faint)";
+      if (!p.positions.length) { body.innerHTML = '<span class="empty">No open positions.</span>'; return; }
+      body.innerHTML = "<table><thead><tr><th>Side</th><th class='r'>Vol</th><th class='r'>Entry</th><th class='r'>SL</th><th class='r'>TP</th><th class='r'>Float</th></tr></thead><tbody>" +
+        p.positions.map(x => `<tr><td class="side-${x.side === "BUY" ? "buy" : "sell"}">${x.side}</td><td class="r">${x.volume}</td><td class="r">${fmt(x.price_open)}</td><td class="r">${fmt(x.sl)}</td><td class="r">${fmt(x.tp)}</td><td class="r ${pnlClass(x.profit)}">${signed(x.profit)}</td></tr>`).join("") +
+        "</tbody></table>";
+    } catch (e) {}
+  }
+
+  // ---------- journal ----------
+  async function pollJournal() {
+    try {
+      const j = await api("/api/journal");
+      const perf = j.performance || {};
+      $("k-trades").textContent = perf.trades ?? NA;
+      $("k-win").textContent = perf.win_rate !== undefined ? Math.round(perf.win_rate * 100) + "%" : NA;
+      const avgr = $("k-avgr"); avgr.textContent = signed(perf.avg_r, 2); avgr.className = "v num " + pnlClass(perf.avg_r);
+      const net = $("k-net"); net.textContent = signed(perf.net_pnl); net.className = "v num " + pnlClass(perf.net_pnl);
+      $("perf-window").textContent = "closed: " + (j.closed_count ?? 0);
+      const body = $("trades-body");
+      if (!j.recent || !j.recent.length) { body.innerHTML = '<span class="empty">No closed trades yet.</span>'; return; }
+      body.innerHTML = "<table><thead><tr><th>Closed</th><th>Side</th><th class='r'>R</th><th class='r'>PnL</th><th>Reason</th></tr></thead><tbody>" +
+        j.recent.slice(0, 12).map(t => `<tr><td class="faint">${(t.close_ts || "").slice(5, 16).replace("T", " ")}</td><td class="side-${t.side === "BUY" ? "buy" : "sell"}">${t.side || NA}</td><td class="r ${pnlClass(t.r_multiple)}">${signed(t.r_multiple)}</td><td class="r ${pnlClass(t.realized_pnl)}">${signed(t.realized_pnl)}</td><td class="faint">${esc(t.close_reason || "")}</td></tr>`).join("") +
+        "</tbody></table>";
+    } catch (e) {}
+  }
+
+  // ---------- bias ----------
+  async function pollBias() { try { renderBias(await api("/api/bias")); } catch (e) {} }
+  function renderBias(b) {
+    if (b.ts) lastBiasTs = b.ts;
+    const body = $("bias-body"), tag = $("bias-age");
+    if (!b.direction) { body.innerHTML = '<span class="empty">No cached bias yet. The LLM has not run.</span>'; tag.className = "tag updated"; tag.textContent = ""; return; }
+    const conv = Math.round((b.conviction || 0) * 100);
+    tag.className = "tag updated"; tag.style.color = b.stale ? "var(--warn)" : "var(--faint)";
+    tag.textContent = (b.age_hours !== null ? b.age_hours + "h old" : "") + (b.stale ? " · stale" : "");
+    body.innerHTML =
+      `<div class="bias-head"><div class="bias-dir ${b.direction}">${b.direction}</div>
+       <div class="conv"><div class="lbl">conviction ${conv}%</div><div class="bar"><i style="width:${conv}%"></i></div></div></div>
+       <div class="interp">${biasInterp(b.direction, b.conviction || 0)}</div>` +
+      (b.rationale ? `<details class="rationale"><summary>full rationale</summary><pre>${esc(b.rationale)}</pre></details>` : "");
+  }
+  function biasInterp(dir, conv) {
+    const veto = CONFIG.bias_veto_conviction ?? 0.75, exit = CONFIG.bias_exit_conviction ?? 0.6;
+    const pct = Math.round((conv || 0) * 100), vp = Math.round(veto * 100), ep = Math.round(exit * 100);
+    if (dir === "HOLD") return `<span class="lead">Flat.</span> No directional veto. Entries are decided by the charts alone; open trades are left to their own stops.`;
+    const opp = dir === "BUY" ? "SELL" : "BUY";
+    if (conv >= veto) return `<span class="lead">Strong ${dir} bias.</span> Blocks new ${opp} entries (${pct}% at or above the ${vp}% veto) and would close or tighten open ${opp} positions.`;
+    if (conv >= exit) return `<span class="lead">Moderate ${dir} bias.</span> Won't block entries (below the ${vp}% veto) but would exit or tighten opposing ${opp} positions (at or above ${ep}%).`;
+    return `<span class="lead">Weak ${dir} lean.</span> Advisory only. ${pct}% sits below both the ${ep}% exit and ${vp}% veto thresholds, so it neither blocks new trades nor closes open ones.`;
+  }
+  function summarize(txt) {
+    if (!txt) return "no rationale";
+    let t = String(txt).replace(/\*\*/g, "").replace(/\s+/g, " ").trim();
+    const m = t.match(/Executive Summary:?\s*(.+)/i); if (m) t = m[1];
+    return t.slice(0, 130) + (t.length > 130 ? "…" : "");
+  }
+
+  // ---------- reflection ----------
+  async function pollReflections() {
+    try {
+      const r = await api("/api/reflections?n=1");
+      const rep = (r.reports || [])[0];
+      if (!rep) { $("refl-body").innerHTML = '<span class="empty">No reflection reports yet. Runs after enough closed trades or daily.</span>'; return; }
+      renderReflection(rep);
+    } catch (e) {}
+  }
+  function renderReflection(rep) {
+    if (rep.ts) lastReflTs = rep.ts;
+    const tag = $("refl-ts"); tag.className = "tag updated"; tag.textContent = rep.ts || "";
+    const st = rep.stats || {}, df = rep.defensive || {};
+    let html = `<div class="reflrow">
+      <span class="faint">trades <b class="num" style="color:var(--text)">${st.trades ?? NA}</b></span>
+      <span class="faint">PF <b class="num ${(st.profit_factor>=1)?'pos':'neg'}">${st.profit_factor ?? NA}</b></span>
+      <span class="faint">exp <b class="num ${pnlClass(st.expectancy)}">${signed(st.expectancy)}</b></span>
+      <span class="faint">max streak <b class="num">${st.max_loss_streak ?? NA}</b></span></div>
+      <div class="interp"><span class="lead">${defenseInterp(df)}</span></div>`;
+    const sugg = rep.suggestions || [];
+    html += '<div style="margin-top:11px">';
+    if (!sugg.length) html += '<div class="empty">No parameter changes suggested. Current settings held.</div>';
+    else sugg.forEach(s => { html += `<div class="sugg"><code>${esc(s.param)}</code> &rarr; <b class="num">${s.suggested}</b> <span class="faint">${esc((s.reason || "").slice(0, 120))}</span></div>`; });
+    html += "</div>";
+    $("refl-body").innerHTML = html;
+  }
+  function defenseInterp(df) {
+    const rm = df.risk_mult ?? 1, reason = esc(df.reason || "normal");
+    if (df.pause) return `Entries paused (${reason}). No new trades; open positions still managed. Risk &times;${rm} when it resumes.`;
+    if (rm < 1) return `Defensive: new positions sized at &times;${rm} (${reason}). Auto-restores to &times;1.0 once the streak clears.`;
+    return `Normal sizing (&times;1.0). No losing-streak throttle active.`;
+  }
+
+  // ---------- actions ----------
+  const ACT_LABEL = { "kill": "Kill switch", "stop": "Stop supervisor", "restart": "Restart", "bias/refresh": "Refresh bias", "reflect": "Run reflection", "run-once": "Run once" };
+  $("toolbar").addEventListener("click", async (e) => {
+    const btn = e.target.closest("button.act"); if (!btn) return;
+    let act = btn.dataset.act;
+    if (btn.dataset.confirm === "1" && !btn.classList.contains("confirm")) {
+      const orig = btn.textContent;
+      btn.classList.add("confirm"); btn.textContent = "Confirm?";
+      const reset = () => { btn.classList.remove("confirm"); btn.textContent = orig; };
+      btn._reset = reset;
+      setTimeout(() => { if (btn.classList.contains("confirm")) reset(); }, 3500);
+      return;
+    }
+    if (btn._reset) btn._reset();
+
+    let path, body = null;
+    if (act === "kill") { path = "/api/actions/kill"; body = { on: btn.dataset.killon === "on" }; }
+    else path = "/api/actions/" + act;
+
+    btn.disabled = true;
+    try {
+      const res = await api(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : null });
+      if (res.ok && act === "bias/refresh") { toast("Refreshing bias. Running the multi-agent LLM analysis…", ""); watchBias(); }
+      else if (res.ok && act === "reflect") { toast("Reflection started. Analysing recent trades…", ""); watchReflection(); }
+      else toast((ACT_LABEL[act] || act) + ": " + (res.message || (res.ok ? "ok" : "failed")) + (res.mode ? " [" + res.mode + "]" : ""), res.ok ? "ok" : "err");
+      setTimeout(() => { pollStatus(); pollBias(); pollReflections(); }, 800);
+    } catch (err) { toast((ACT_LABEL[act] || act) + " failed: " + err.message, "err"); }
+    finally { setTimeout(() => { btn.disabled = false; }, 600); }
+  });
+
+  function flash(id) { const e = $(id); e.classList.remove("flash"); void e.offsetWidth; e.classList.add("flash"); }
+
+  function watchBias() {
+    const before = lastBiasTs, tag = $("bias-age"), t0 = Date.now();
+    tag.className = "tag running"; tag.textContent = "refreshing (LLM)";
+    const poll = async () => {
+      try {
+        const b = await api("/api/bias");
+        if (b.ts && b.ts !== before) {
+          renderBias(b); flash("bias-panel");
+          toast("Bias updated to " + b.direction + " " + Math.round((b.conviction || 0) * 100) + "%: " + summarize(b.rationale), "ok");
+          return;
+        }
+      } catch (e) {}
+      if (Date.now() - t0 > 130000) { tag.className = "tag updated"; tag.textContent = "timed out"; toast("Bias refresh is taking long. Check the log stream.", ""); return; }
+      setTimeout(poll, 2500);
+    };
+    setTimeout(poll, 2500);
+  }
+
+  function watchReflection() {
+    const before = lastReflTs, tag = $("refl-ts"), t0 = Date.now();
+    tag.className = "tag running"; tag.textContent = "running";
+    const poll = async () => {
+      try {
+        const r = await api("/api/reflections?n=1"); const rep = (r.reports || [])[0];
+        if (rep && rep.ts !== before) {
+          renderReflection(rep); flash("refl-panel");
+          const st = rep.stats || {}, df = rep.defensive || {}, n = (rep.suggestions || []).length;
+          toast("Reflection done: PF " + (st.profit_factor ?? NA) + ", exp " + signed(st.expectancy) + ", " + n + " suggestion" + (n === 1 ? "" : "s") + ", " + (df.reason || "normal"), "ok");
+          return;
+        }
+      } catch (e) {}
+      if (Date.now() - t0 > 210000) { tag.className = "tag updated"; tag.textContent = ""; toast("Reflection still running. Check the log stream.", ""); return; }
+      setTimeout(poll, 3000);
+    };
+    setTimeout(poll, 3000);
+  }
+
+  // ---------- log stream ----------
+  const LOG = $("log"); const MAX_ROWS = 600; let autoscroll = true; let levelFilter = "all";
+  $("autoscroll-chip").addEventListener("click", function () { autoscroll = !autoscroll; this.classList.toggle("on", autoscroll); if (autoscroll) LOG.scrollTop = LOG.scrollHeight; });
+  $("clear").addEventListener("click", () => { LOG.innerHTML = ""; });
+  document.querySelectorAll(".chip[data-lvl]").forEach(c => c.addEventListener("click", () => {
+    document.querySelectorAll(".chip[data-lvl]").forEach(x => x.classList.remove("on"));
+    c.classList.add("on"); levelFilter = c.dataset.lvl; applyFilter();
+  }));
+  LOG.addEventListener("scroll", () => { const atBottom = LOG.scrollHeight - LOG.scrollTop - LOG.clientHeight < 40; if (!atBottom && autoscroll) { autoscroll = false; $("autoscroll-chip").classList.remove("on"); } });
+
+  const SKIP = new Set(["event", "level", "timestamp", "logger", "_record"]);
+  // event -> colour category (level still wins for error/warning)
+  const EV_CAT = {
+    "ORDER FILLED": "cat-trade", "DRY-RUN signal": "cat-trade", "DRY_RUN_order": "cat-trade",
+    "scaled_out": "cat-trade", "scaled_out_dryrun": "cat-trade", "trail_sl": "cat-trade", "ORDER FAILED": "cat-error",
+    "position closed": "cat-exit", "outcome_recorded": "cat-exit", "bias_exit": "cat-exit", "bias_exit_tighten": "cat-exit",
+    "early_loss_cut": "cat-exit", "early_loss_cut_dryrun": "cat-exit", "close_position": "cat-exit", "closing_conflicting": "cat-exit",
+    "bias_refresh_start": "cat-llm", "bias_refreshed": "cat-llm", "bias_cache_hit": "cat-llm", "propagate_start": "cat-llm",
+    "raw_rating": "cat-llm", "signal_parsed": "cat-llm", "trading_graph_built": "cat-llm", "prompt_caching_enabled": "cat-llm",
+    "reflection_done": "cat-llm", "bias_veto": "cat-llm",
+    "notify": "cat-info",
+    "no_trigger": "cat-quiet", "market_closed": "cat-quiet", "add_blocked": "cat-quiet",
+    "risk_rejected": "cat-quiet", "total_risk_cap": "cat-quiet", "bias_unavailable_proceeding": "cat-warn",
+    "supervisor started": "cat-system", "supervisor_stopped": "cat-system", "stop_requested": "cat-system",
+    "watchdog_started": "cat-system", "relaunched_supervisor": "cat-system",
+    "kill_switch_tripped": "cat-error", "KILL SWITCH": "cat-error", "heartbeat_stale": "cat-error", "killed_stale_supervisor": "cat-error",
+    "kill_switch_active": "cat-warn", "daily_loss_halt": "cat-warn", "defensive_pause": "cat-warn",
+  };
+  function eventCategory(o) {
+    const lvl = (o.level || "info").toLowerCase();
+    if (lvl === "error" || lvl === "critical") return "cat-error";
+    if (EV_CAT[o.event]) return EV_CAT[o.event];
+    if (lvl === "warning") return "cat-warn";
+    return "cat-info";
+  }
+  function addLog(o) {
+    const lvl = (o.level || "info").toLowerCase();
+    const cat = eventCategory(o);
+    const ts = (o.timestamp || "").slice(11, 19) || (o.timestamp || "");
+    const ev = o.event || "event";
+    const kv = Object.keys(o).filter(k => !SKIP.has(k)).map(k => `<b>${esc(k)}</b>=${esc(typeof o[k] === "object" ? JSON.stringify(o[k]) : o[k])}`).join("  ");
+    const row = document.createElement("div");
+    row.className = "row" + (cat === "cat-error" ? " is-error" : (cat === "cat-warn" ? " is-warn" : ""));
+    row.dataset.lvl = lvl;
+    row.innerHTML = `<span class="t">${esc(ts)}</span><span class="meat"><span class="ev-badge ${cat}">${esc(ev)}</span>${kv ? '<span class="kv">' + kv + '</span>' : ''}</span>`;
+    if (levelFilter !== "all" && !matchLvl(lvl)) row.style.display = "none";
+    LOG.appendChild(row);
+    while (LOG.childElementCount > MAX_ROWS) LOG.removeChild(LOG.firstChild);
+    if (autoscroll) LOG.scrollTop = LOG.scrollHeight;
+  }
+  function matchLvl(lvl) { return levelFilter === "all" || (levelFilter === "error" ? (lvl === "error" || lvl === "critical") : lvl === levelFilter); }
+  function applyFilter() { LOG.querySelectorAll(".row").forEach(r => { r.style.display = matchLvl(r.dataset.lvl) ? "" : "none"; }); if (autoscroll) LOG.scrollTop = LOG.scrollHeight; }
+
+  async function backfill() { try { const r = await api("/api/logs/tail"); (r.lines || []).forEach(addLog); } catch (e) {} }
+  function streamLogs() {
+    const es = new EventSource("/api/logs/stream");
+    es.onmessage = (m) => { try { addLog(JSON.parse(m.data)); } catch (e) {} };
+    es.onerror = () => { es.close(); setTimeout(streamLogs, 3000); };
+  }
+
+  // ---------- boot ----------
+  (async () => {
+    try { CONFIG = await api("/api/config"); } catch (e) {}
+    await backfill(); streamLogs();
+    const tick = () => { pollStatus(); pollPositions(); };
+    const slow = () => { pollJournal(); pollBias(); pollReflections(); };
+    tick(); slow();
+    setInterval(tick, 5000);
+    setInterval(slow, 20000);
+    setInterval(() => { renderLoops(); renderHeartbeat(); }, 1000);
+  })();
+})();
+</script>
+</body>
+</html>

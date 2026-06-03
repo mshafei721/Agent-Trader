@@ -21,7 +21,7 @@ SHAPES = [
     ("safe", 215, 160, 360, 56, "#fff3bf", "#f59e0b",
      "Safety gates\nkill-switch · demo-only · market-open · loss caps", 2, 100),
     ("hL", 70, 290, 280, 58, "#c3fae8", "#0e7490", "FAST  (every 60s)\nManage open trades", 2, 100),
-    ("hR", 460, 290, 300, 58, "#d0bfff", "#8b5cf6", "ENTRY EVAL  (every 30 min)\nFind a new trade", 2, 100),
+    ("hR", 460, 290, 300, 58, "#d0bfff", "#8b5cf6", "ENTRY EVAL  (every 15 min)\nFind a new trade", 2, 100),
     ("cut", 70, 374, 280, 82, "#ffc9c9", "#ef4444",
      "Early loss-cut\nif down 0.5R AND M15 flips\n-> close now", 2, 100),
     ("scale", 70, 480, 280, 64, "#ffd8a8", "#f59e0b", "Scale-out\nclose half at +1R", 2, 100),

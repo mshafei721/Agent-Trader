@@ -29,10 +29,23 @@ Write-Host "Installing GoldTraderWatchdog service..."
 & $Nssm set GoldTraderWatchdog AppExit Default Restart
 & $Nssm set GoldTraderWatchdog Start SERVICE_AUTO_START
 
+Write-Host "Installing GoldTraderDashboard service..."
+& $Nssm install GoldTraderDashboard $python "-m" "goldtrader.dashboard"
+& $Nssm set GoldTraderDashboard AppDirectory $root
+& $Nssm set GoldTraderDashboard AppStdout "$root\logs\service_dashboard.out.log"
+& $Nssm set GoldTraderDashboard AppStderr "$root\logs\service_dashboard.err.log"
+# The managed-by-service flag is what makes the dashboard's stop/restart actions
+# drive NSSM (nssm stop/restart GoldTraderSupervisor) instead of taskkill.
+& $Nssm set GoldTraderDashboard AppEnvironmentExtra "GOLDTRADER_MANAGED_BY_SERVICE=1"
+& $Nssm set GoldTraderDashboard AppExit Default Restart
+& $Nssm set GoldTraderDashboard AppRestartDelay 5000
+& $Nssm set GoldTraderDashboard Start SERVICE_AUTO_START
+
 Write-Host ""
-Write-Host "Done. Start with:  nssm start GoldTraderSupervisor ; nssm start GoldTraderWatchdog"
-Write-Host "Stop with:         nssm stop GoldTraderSupervisor  ; nssm stop GoldTraderWatchdog"
-Write-Host "Remove with:       nssm remove GoldTraderSupervisor confirm ; nssm remove GoldTraderWatchdog confirm"
+Write-Host "Done. Start with:  nssm start GoldTraderSupervisor ; nssm start GoldTraderWatchdog ; nssm start GoldTraderDashboard"
+Write-Host "Stop with:         nssm stop GoldTraderSupervisor  ; nssm stop GoldTraderWatchdog  ; nssm stop GoldTraderDashboard"
+Write-Host "Remove with:       nssm remove GoldTraderSupervisor confirm ; nssm remove GoldTraderWatchdog confirm ; nssm remove GoldTraderDashboard confirm"
 Write-Host ""
+Write-Host "Dashboard:  http://127.0.0.1:8787/  (localhost only)"
 Write-Host "NOTE: The MT5 terminal must be running and logged in (Algo Trading button ON)."
 Write-Host "      Services run in session 0; ensure the terminal is reachable for that context."

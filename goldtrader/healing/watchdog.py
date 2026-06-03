@@ -14,13 +14,34 @@ import time
 
 from ..config import get_settings
 from ..logging_setup import get_logger, setup_logging
-from .heartbeat import heartbeat_age, read_heartbeat
+from .heartbeat import heartbeat_age, read_heartbeat, write_heartbeat
 
 log = get_logger("goldtrader.watchdog")
 
 CHECK_INTERVAL_S = 60
 # stale = > 3 missed bars (interval_minutes) OR a hard floor, whichever larger
 STALE_FACTOR = 3
+
+# Last recovery action taken (surfaced to the dashboard via the watchdog heartbeat).
+_last_action: str | None = None
+_last_action_ts: float | None = None
+
+
+def _beat(settings, supervisor_age: float) -> None:
+    """Write the watchdog's own heartbeat so the dashboard can show it as alive."""
+    try:
+        write_heartbeat(
+            settings.watchdog_heartbeat_file,
+            {
+                "role": "watchdog",
+                "supervisor_age_s": round(supervisor_age, 1)
+                if supervisor_age != float("inf") else None,
+                "last_action": _last_action,
+                "last_action_ts": _last_action_ts,
+            },
+        )
+    except Exception as exc:  # noqa: BLE001 — observability must never crash the watchdog
+        log.warning("watchdog_heartbeat_failed", error=str(exc))
 
 
 def _kill_pid(pid: int) -> None:
@@ -47,6 +68,7 @@ def _relaunch_supervisor() -> None:
 
 
 def main():
+    global _last_action, _last_action_ts
     setup_logging()
     s = get_settings()
     stale_threshold = max(STALE_FACTOR * s.interval_minutes * 60, 300)
@@ -63,6 +85,9 @@ def main():
             # Otherwise relaunch directly.
             if not os.environ.get("GOLDTRADER_MANAGED_BY_SERVICE"):
                 _relaunch_supervisor()
+            _last_action = f"recovered hung supervisor (pid={pid}, age={round(age)}s)"
+            _last_action_ts = time.time()
+        _beat(s, age)
         time.sleep(CHECK_INTERVAL_S)
 
 

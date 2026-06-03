@@ -19,7 +19,11 @@
       "mcp__claude_ai_Excalidraw__create_view",
       "PowerShell(.\\\\.venv\\\\Scripts\\\\python.exe scripts\\\\gen_flowchart.py 2>&1)",
       "PowerShell(.\\\\.venv\\\\Scripts\\\\python.exe -c \"import goldtrader.supervisor.loop, goldtrader.learning.reflection, goldtrader.cli, goldtrader.strategy.exits; print\\('IMPORTS OK'\\)\" 2>&1)",
-      "PowerShell(.\\\\.venv\\\\Scripts\\\\python.exe -c \"import json; d=json.load\\(open\\('system-flow.excalidraw',encoding='utf-8'\\)\\); print\\('valid:', d['type'], len\\(d['elements']\\), 'elements'\\)\")"
+      "PowerShell(.\\\\.venv\\\\Scripts\\\\python.exe -c \"import json; d=json.load\\(open\\('system-flow.excalidraw',encoding='utf-8'\\)\\); print\\('valid:', d['type'], len\\(d['elements']\\), 'elements'\\)\")",
+      "PowerShell(graphify export html 2>&1)",
+      "Skill(impeccable)",
+      "Skill(impeccable:*)",
+      "Bash(node \"C:\\\\Users\\\\maels\\\\.claude\\\\skills\\\\impeccable\\\\scripts\\\\load-context.mjs\")"
     ]
   }
 }

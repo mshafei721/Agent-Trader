@@ -66,6 +66,53 @@ class Supervisor:
             "supervisor started",
             f"symbol={self.client.symbol} equity={eq:.2f} dry_run={self.s.dry_run}",
         )
+        # Warm a cold/stale macro-bias cache at boot (force=False -> a fresh cache
+        # is reused, so a quick restart never pays for a redundant LLM run).
+        self.refresh_bias_safe(force=False)
+
+    # ---------------- macro bias (slow LLM tier, decoupled from triggers) ----------------
+    def refresh_bias_safe(self, *, force: bool = False) -> None:
+        """Refresh the LLM macro bias on its own cadence, independent of chart triggers.
+
+        ``current()`` only hits the LLM when the cached bias is stale (or force=True),
+        so calling this every wakeup is cheap. Charts lead: an LLM/network outage must
+        NEVER block or crash the loop.
+        """
+        try:
+            self.bias_provider.current(force_refresh=force, run_date=today_iso())
+            self.breaker.record_success()
+        except Exception as exc:  # noqa: BLE001
+            log.warning("bias_unavailable_proceeding", error=str(exc))
+
+    # ---------------- account snapshot (for the dashboard) ----------------
+    def _write_account_snapshot(self, equity: float) -> None:
+        """Persist balance/equity/floating + open positions so the dashboard can
+        render live account state by reading a file (no second MT5 connection)."""
+        bal = self.client.balance()
+        positions = []
+        for p in self.client.get_open_positions():
+            positions.append({
+                "ticket": p.ticket,
+                "side": "BUY" if p.type == 0 else "SELL",
+                "volume": p.volume,
+                "price_open": p.price_open,
+                "sl": p.sl,
+                "tp": p.tp,
+                "profit": round(float(p.profit), 2),
+            })
+        payload = {
+            "ts": time.time(),
+            "symbol": self.client.symbol,
+            "balance": round(bal, 2),
+            "equity": round(equity, 2),
+            "floating_pnl": round(equity - bal, 2),
+            "positions": positions,
+        }
+        path = self.s.account_file
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(payload), encoding="utf-8")
+        tmp.replace(path)
 
     # ---------------- learning reconciliation ----------------
     def reconcile_closed(self):
@@ -211,6 +258,11 @@ class Supervisor:
         self.client.ensure_connected()
         equity = self.client.equity()
         self.state.roll_day_if_needed(equity)
+        # Publish an account snapshot for the dashboard (so it never opens its own MT5 link).
+        try:
+            self._write_account_snapshot(equity)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("account_snapshot_failed", error=str(exc))
         if guards.total_loss_breached(self.state.start_equity, equity, s):
             guards.trip_kill_switch(s, f"total loss breached at equity {equity:.2f}")
             self.notifier.notify("KILL SWITCH", "total loss threshold breached")
@@ -383,12 +435,20 @@ class Supervisor:
         self.startup()
         last_entry = 0.0
         entry_period = self.s.interval_minutes * 60
+        # Macro-bias refresh runs on its OWN cadence (decoupled from triggers); the
+        # boot warm-up in startup() already attempted one, so this fires next period.
+        last_bias = time.time()
+        bias_period = max(self.s.bias_refresh_hours, 0.1) * 3600
         while not self._stop:
             try:
                 allowed = self.manage_cycle()  # FAST: guards + trade management every cycle
                 if allowed and (time.time() - last_entry) >= entry_period:
                     self.entry_cycle()         # SLOW: new-entry evaluation
                     last_entry = time.time()
+                # PERIODIC: refresh the LLM macro bias regardless of triggers/market-open
+                if (time.time() - last_bias) >= bias_period:
+                    self.refresh_bias_safe(force=False)
+                    last_bias = time.time()
                 # PERIODIC: reflection / self-heal / learn (N closed trades or daily)
                 if self.reflection.maybe_run(self.state):
                     self.state.save(self.s.state_file)
@@ -398,10 +458,20 @@ class Supervisor:
                 self.breaker.record_failure(f"cycle: {exc}")
                 log.error("cycle_unhandled", error=str(exc))
             finally:
-                write_heartbeat(self.s.heartbeat_file,
-                                {"symbol": self.client.symbol, "dry_run": self.s.dry_run})
-            # short sleep = fast management cadence; stays responsive to stop/kill-switch
-            interval = max(5, self.s.manage_interval_seconds)
+                # short sleep = fast management cadence; stays responsive to stop/kill-switch
+                interval = max(5, self.s.manage_interval_seconds)
+                now = time.time()
+                # Publish the loop schedule so the dashboard can show live countdowns.
+                write_heartbeat(self.s.heartbeat_file, {
+                    "symbol": self.client.symbol,
+                    "dry_run": self.s.dry_run,
+                    "next_manage_ts": now + interval,
+                    "next_entry_ts": last_entry + entry_period,
+                    "next_bias_ts": last_bias + bias_period,
+                    "manage_interval_s": interval,
+                    "entry_period_s": entry_period,
+                    "bias_period_s": bias_period,
+                })
             slept = 0.0
             while slept < interval and not self._stop:
                 time.sleep(min(2.0, interval - slept))

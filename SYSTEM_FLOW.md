@@ -10,7 +10,7 @@ Two-speed autonomous XAUUSD trader: **TradingAgents LLM bias** (slow) + **determ
 flowchart TD
   W["Loop wakes every 60s"] --> S{"Safety gates<br/>kill-switch / demo-only<br/>market-open / loss caps"}
   S -->|every 60s| C1
-  S -->|every 30 min| E1
+  S -->|every 15 min| E1
   LLM["LLM bias (TradingAgents)<br/>refresh ~4h, cached<br/>LONG / SHORT / FLAT"] -. veto only .-> E4
 
   subgraph FAST["FAST loop — manage open trades (60s)"]
@@ -18,7 +18,7 @@ flowchart TD
     C1["Early loss-cut<br/>down 0.5R AND M15 flips -> close"] --> C2["Scale-out<br/>close half at +1R"] --> C3["Breakeven at +0.5R<br/>then Chandelier ATR trail<br/>(stop never loosens)"]
   end
 
-  subgraph ENTRY["ENTRY eval — find a new trade (30 min)"]
+  subgraph ENTRY["ENTRY eval — find a new trade (15 min)"]
     direction TB
     E1["1. H4 trend = direction<br/>up->buy / down->sell / flat->skip"] --> E2["2. H1 not opposing + ADX strong"] --> E3["3. M30 trigger<br/>MACD cross / momentum"] --> E4["4. LLM bias veto<br/>blocks only strong opposite (>=0.75)"] --> E5["5. Pyramid gate<br/>winners only, max 3"] --> E6["6. Risk 0.5% (M30 ATR)<br/>+ total-risk cap 1.5%"] --> E7["PLACE DEMO ORDER<br/>journal + MT5"]
   end
@@ -45,7 +45,7 @@ flowchart TD
 3. **Breakeven + Chandelier trail** — at +0.5R the stop moves to entry, then trails to `swing extreme ∓ ATR×1.5`, ratcheting only in your favor.
 - The broker-side **hard stop** is always present as the ultimate backstop.
 
-### ENTRY lane — find a new trade (every 30 min)
+### ENTRY lane — find a new trade (every 15 min)
 1. **H4 trend** sets the direction (up→buy, down→sell, flat→skip).
 2. **H1** must not oppose + **ADX** confirms trend strength.
 3. **M30 trigger** (MACD cross / momentum) times the entry.
@@ -63,6 +63,14 @@ Two kinds of self-healing run independently:
   3. **LLM review (advisory):** an LLM analyses recent losers + current parameters and writes *suggestions* to `data/reflections/` — these are **never auto-applied**, and are gated until ≥20 closed trades. Suggestions are confined to a whitelist that can never touch risk %, loss caps, or the demo guard.
 
 Plus a **bias-aware exit** (fast loop): if the cached LLM bias turns against an open trade with enough conviction, the trade is closed/tightened. Run `python -m goldtrader.cli reflect` to produce a report on demand.
+
+## Monitoring (dashboard)
+
+A read-only **FastAPI dashboard** (`goldtrader/dashboard/`, `.\run_dashboard.ps1` → <http://127.0.0.1:8787>)
+renders live state from the files the supervisor writes (heartbeat, account snapshot, journal,
+bias, reflections) — it never opens its own MT5 link. It shows the loop countdowns (management,
+entry, bias, reflection), open positions, performance KPIs, the self-heal/reflection panel, and a
+live log stream, with manual controls (kill switch, refresh bias, run reflection, run-once, stop/restart).
 
 ## Regenerate the diagram
 

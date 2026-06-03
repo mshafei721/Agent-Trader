@@ -18,7 +18,7 @@ feedback loop.
 SLOW TIER (every 4h, ~$1):  TradingAgents LLM → directional BIAS (long/short/flat)
                             cached to data/bias.json
                                      │
-FAST TIER (every 30 min, free):      ▼
+FAST TIER (every 15 min, free):      ▼
   H4 trend filter → H1 setup (ADX+MACD) → M30 trigger  =  technical entry
                                      │
         ┌────────────────────────────▼──────────────────────────────┐
@@ -31,7 +31,7 @@ FAST TIER (every 30 min, free):      ▼
 ```
 
 The LLM plays to its strength (macro/news/sentiment → bias) on a slow, cheap cadence;
-a free deterministic multi-timeframe engine times entries within that bias. Most 30-min
+a free deterministic multi-timeframe engine times entries within that bias. Most 15-min
 ticks cost nothing; the LLM runs only when its cached bias is older than `BIAS_REFRESH_HOURS`.
 
 - **Fundamentals analyst is disabled** (gold has no company financials); Technical,
@@ -161,6 +161,48 @@ nssm start GoldTraderWatchdog
 
 ---
 
+## Dashboard (live monitoring)
+
+A localhost-only **FastAPI dashboard** shows the bot's live state — loop countdowns (management,
+entry, bias, reflection), open positions, performance KPIs, the macro-bias panel, the
+self-heal/reflection progress, and a streaming log — plus manual controls (kill switch, refresh
+bias, run reflection, run-once, stop/restart).
+
+```powershell
+.\run_dashboard.ps1     # then open http://127.0.0.1:8787
+```
+
+`.\run_supervisor.ps1` already launches the dashboard alongside the supervisor + watchdog. It reads
+the supervisor's snapshot files **read-only** (never opens its own MT5 link), so it is safe to run
+beside a live trader. It binds to loopback only — set `DASHBOARD_TOKEN` in `.env` if you ever expose it.
+
+---
+
+## Code knowledge graph (graphify)
+
+The project keeps a queryable **knowledge graph of the codebase** (most-connected "god nodes",
+community detection, module relationships) under `graphify-out/`. That folder is **not committed**
+(it is regenerated locally and is in `.gitignore`), so a fresh clone has no graph yet — to make this
+*graph memory* available you install graphify and build it:
+
+```powershell
+# 1. Install graphify (either)
+uv tool install graphifyy
+pip install graphifyy
+
+# 2. Build the graph. Easiest inside Claude Code: just run the /graphify slash command
+#    (it uses the Claude session for extraction). Standalone CLI needs a Gemini key:
+$env:GEMINI_API_KEY = "...your key..."
+graphify .                 # writes graphify-out/{graph.html, GRAPH_REPORT.md, graph.json}
+graphify . --update        # refresh after code changes
+graphify query "how does the reflection self-heal loop decide when to run?"
+```
+
+Open `graphify-out/graph.html` for the interactive map, or `graphify-out/GRAPH_REPORT.md` for the
+god-nodes / communities summary.
+
+---
+
 ## Safety controls
 
 | Control | How |
@@ -171,7 +213,7 @@ nssm start GoldTraderWatchdog
 | **Daily loss halt** | `MAX_DAILY_LOSS_PCT` — stops trading for the day. |
 | **Total loss kill** | `MAX_TOTAL_LOSS_PCT` — trips the kill switch and exits. |
 | **Circuit breaker** | Repeated LLM/MT5/order failures → forces HOLD, cools down. |
-| **Position cap** | `MAX_OPEN_POSITIONS` (default 1). |
+| **Position cap** | `MAX_OPEN_POSITIONS` (default 3) + `MAX_TOTAL_RISK_PCT` total-risk cap. |
 
 ## Key files
 
