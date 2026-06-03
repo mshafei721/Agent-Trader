@@ -126,6 +126,15 @@ class MT5Client:
         t = self.get_tick()
         return (datetime.now(timezone.utc).timestamp()) - float(t.time)
 
+    def current_spread_points(self) -> float:
+        """Live bid/ask spread in broker points (ask-bid)/point. Used by the entry spread guard."""
+        spec = self.spec
+        assert spec is not None
+        if spec.point <= 0:
+            return 0.0
+        t = self.get_tick()
+        return (float(t.ask) - float(t.bid)) / spec.point
+
     def get_rates(self, timeframe: int, count: int):
         """Return recent OHLC bars (numpy structured array) for the symbol."""
         with self._lock:

@@ -138,6 +138,29 @@ class Settings(BaseSettings):
     require_demo: bool = Field(default=True)
     dry_run: bool = Field(default=True)
 
+    # ---------- Live-safety gates (V7 Phase 0) ----------
+    # Spread guard: reject NEW entries when the live spread (broker points) exceeds this.
+    spread_guard_enabled: bool = Field(default=True)
+    max_entry_spread_points: float = Field(default=50.0)
+    # News / economic-calendar blackout around high-impact USD events. FAILS CLOSED:
+    # if the calendar is unavailable, default ET windows (08:30 / 14:00) are blacked out.
+    news_blackout_enabled: bool = Field(default=True)
+    news_blackout_pre_minutes: int = Field(default=30)
+    news_blackout_post_minutes: int = Field(default=15)
+    finnhub_api_key: SecretStr | None = Field(default=None)
+    calendar_refresh_minutes: int = Field(default=60)
+    # Session-time gate: only OPEN new entries during the London-NY overlap (UTC hours).
+    session_filter_enabled: bool = Field(default=True)
+    trading_session_start_utc: int = Field(default=7)
+    trading_session_end_utc: int = Field(default=17)
+    # Weekend flat: close all positions before the Friday close; grace after Sunday reopen.
+    weekend_flat_enabled: bool = Field(default=True)
+    weekend_flat_hour_utc: int = Field(default=20)
+    weekend_flat_minute_utc: int = Field(default=30)
+    monday_grace_minutes: int = Field(default=30)
+    # Absolute lot cap: hard clamp on lot size regardless of equity growth.
+    max_lots_absolute: float = Field(default=1.0)
+
     # ---------- Notifications ----------
     telegram_bot_token: SecretStr | None = Field(default=None)
     telegram_chat_id: str | None = Field(default=None)
@@ -191,6 +214,16 @@ class Settings(BaseSettings):
         return RUNTIME_DIR / "KILL_SWITCH"
 
     @property
+    def circuit_breaker_file(self) -> Path:
+        # Persisted circuit-breaker state so a crash/relaunch can't reset the failure count.
+        return DATA_DIR / "circuit_breaker.json"
+
+    @property
+    def calendar_cache_file(self) -> Path:
+        # Cached economic-calendar events (resilient across restarts; protects free-tier quota).
+        return DATA_DIR / "calendar_cache.json"
+
+    @property
     def log_file(self) -> Path:
         return LOGS_DIR / "goldtrader.jsonl"
 
@@ -202,6 +235,7 @@ class Settings(BaseSettings):
     @field_validator(
         "mt5_login", "mt5_password", "mt5_server", "mt5_terminal_path",
         "telegram_bot_token", "telegram_chat_id", "llm_api_key", "dashboard_token",
+        "finnhub_api_key",
         mode="before",
     )
     @classmethod

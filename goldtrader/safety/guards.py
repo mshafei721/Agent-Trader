@@ -61,3 +61,15 @@ def trip_kill_switch(settings: Settings, reason: str) -> None:
     settings.kill_switch_file.parent.mkdir(parents=True, exist_ok=True)
     settings.kill_switch_file.write_text(f"tripped: {reason}\n", encoding="utf-8")
     log.error("kill_switch_tripped", reason=reason)
+
+
+def entry_spread_ok(spread_points: float, settings: Settings) -> GateResult:
+    """Block a NEW entry when the live spread blows out (rollover / news / illiquid)."""
+    if not settings.spread_guard_enabled:
+        return GateResult(True, "spread guard disabled")
+    if spread_points > settings.max_entry_spread_points:
+        return GateResult(
+            False,
+            f"spread {spread_points:.0f}pts > cap {settings.max_entry_spread_points:.0f}pts",
+        )
+    return GateResult(True)

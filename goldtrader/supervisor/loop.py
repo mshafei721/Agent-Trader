@@ -16,6 +16,7 @@ import time
 from datetime import datetime, timedelta, timezone
 
 from ..config import get_settings
+from ..feeds.calendar import EconomicCalendar
 from ..healing.circuit_breaker import CircuitBreaker
 from ..healing.heartbeat import write_heartbeat
 from ..learning.journal import Journal
@@ -48,7 +49,8 @@ class Supervisor:
         self.journal = Journal(self.s.journal_db)
         self.notifier = Notifier(self.s)
         self.reflection = ReflectionEngine(self.s, self.journal, self.notifier)
-        self.breaker = CircuitBreaker()
+        self.breaker = CircuitBreaker(state_path=self.s.circuit_breaker_file)
+        self.calendar = EconomicCalendar(self.s)
         self.state = SupervisorState.load(self.s.state_file)
         self._stop = False
 
@@ -248,6 +250,21 @@ class Supervisor:
                     log.info("trail_sl", ticket=p.ticket, new_sl=round(new_sl, spec.digits),
                              r_now=round(r_now, 2))
 
+    def _close_all_positions(self, reason: str) -> None:
+        """Flatten every open position (respects DRY_RUN). Used by the weekend-flat guard."""
+        positions = self.client.get_open_positions()
+        if not positions:
+            return
+        for p in positions:
+            if self.s.dry_run:
+                log.info("flat_all_dryrun", ticket=p.ticket, reason=reason)
+                continue
+            res = self.client.close_position(p)
+            if res.ok:
+                log.info("flat_all_close", ticket=p.ticket, reason=reason)
+            else:
+                log.warning("flat_all_close_failed", ticket=p.ticket, retcode=res.retcode)
+
     # ---------------- fast management cycle (every manage_interval_seconds) ----------------
     def manage_cycle(self) -> bool:
         """Guards + reconcile + fast trade management. Returns True if NEW ENTRIES are allowed."""
@@ -285,6 +302,11 @@ class Supervisor:
             self.manage_open_positions()
         except Exception as exc:  # noqa: BLE001
             log.warning("manage_positions_failed", error=str(exc))
+        # Weekend flat: close everything before the Friday close so a tight stop can't be
+        # gapped through on the Monday reopen. Blocks new entries for the rest of the window.
+        if s.weekend_flat_enabled and scheduler.should_close_for_weekend(s):
+            self._close_all_positions("weekend_flat")
+            return False
         # Daily-loss gate blocks NEW entries only — management above still ran.
         daily = guards.check_daily_loss(self.state.day_anchor_equity, equity, s)
         if not daily.allowed:
@@ -310,6 +332,34 @@ class Supervisor:
         if tech.side is None:
             log.info("no_trigger", reasons=tech.reasons)
             return
+
+        # --- V7 Phase-0 entry gates (cheap, deterministic; run BEFORE the LLM bias fetch) ---
+        now = datetime.now(timezone.utc)
+        # session-time gate: only open new trades in the liquid London-NY overlap
+        if not scheduler.in_session(s, now):
+            log.info("session_filter_skip", hour=now.hour)
+            return
+        # Monday-grace gate: skip the thin/wide-spread window just after the Sunday reopen
+        if scheduler.in_monday_grace(s, now):
+            log.info("monday_grace_skip")
+            return
+        # news/economic-calendar blackout (FAILS CLOSED) around high-impact USD events
+        if s.news_blackout_enabled:
+            blackout, why = self.calendar.in_blackout(now)
+            if blackout:
+                log.warning("news_blackout_skip", reason=why)
+                return
+        # spread guard: refuse new entries when the live spread blows out
+        if s.spread_guard_enabled:
+            try:
+                spread_pts = self.client.current_spread_points()
+            except Exception as exc:  # noqa: BLE001 — be conservative: skip this entry
+                log.warning("spread_read_failed_skip", error=str(exc))
+                return
+            sg = guards.entry_spread_ok(spread_pts, s)
+            if not sg.allowed:
+                log.info("spread_guard_triggered", reason=sg.reason)
+                return
 
         # defensive self-heal gate: pause NEW entries after a bad streak (deterministic)
         defensive = defensive_state(self.journal, s)

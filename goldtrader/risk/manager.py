@@ -137,6 +137,10 @@ class RiskManager:
         lots = self.client.compute_lot(sl_distance, risk_amount)
         if lots <= 0:
             return RiskDecision(False, "risk budget too small for one minimum lot")
+        # Absolute lot cap: hard clamp so growing equity can't silently scale notional.
+        if self.s.max_lots_absolute > 0 and lots > self.s.max_lots_absolute:
+            log.info("lot_cap_applied", raw=lots, cap=self.s.max_lots_absolute)
+            lots = self.s.max_lots_absolute
 
         tick = self.client.get_tick()
         if intent.side == Action.BUY:
