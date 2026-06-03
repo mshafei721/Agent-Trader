@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(py -0p 2>&1)",
+      "PowerShell(py -3.13 -c \"import sys; print\\(sys.version\\); import MetaTrader5 as m; print\\('MT5', m.__version__\\)\" 2>&1)",
+      "PowerShell(py -3.13 -m venv .venv)",
+      "PowerShell(.\\\\.venv\\\\Scripts\\\\python.exe -m pip install --upgrade pip --quiet 2>&1)",
+      "PowerShell(.\\\\.venv\\\\Scripts\\\\python.exe -c \"import sys; print\\(sys.version\\)\")",
+      "PowerShell(.\\\\.venv\\\\Scripts\\\\python.exe -m pip install --quiet MetaTrader5 pydantic-settings structlog python-dotenv pandas numpy pytest requests 2>&1)",
+      "PowerShell(.\\\\.venv\\\\Scripts\\\\python.exe -c \"import MetaTrader5,pydantic_settings,structlog,pandas,numpy,pytest; print\\('core deps OK'\\)\")",
+      "PowerShell(.\\\\.venv\\\\Scripts\\\\python.exe -m pip install \"git+https://github.com/TauricResearch/TradingAgents.git\" 2>&1 | Tee-Object -FilePath \".\\\\logs_install_ta.txt\"; Write-Output \"TA_INSTALL_EXIT=$LASTEXITCODE\")",
+      "PowerShell(.\\\\.venv\\\\Scripts\\\\python.exe -m pytest -q 2>&1)",
+      "PowerShell(.\\\\.venv\\\\Scripts\\\\python.exe -m goldtrader.cli tech 2>&1)",
+      "PowerShell(.\\\\.venv\\\\Scripts\\\\python.exe -c \"import goldtrader.supervisor.loop; print\\('LOOP IMPORTS OK'\\)\" 2>&1)",
+      "PowerShell(.\\\\.venv\\\\Scripts\\\\python.exe -m goldtrader.cli status 2>&1)",
+      "PowerShell(.\\\\.venv\\\\Scripts\\\\python.exe -c \"import goldtrader.supervisor.loop, goldtrader.risk.manager; print\\('IMPORTS OK'\\)\" 2>&1)",
+      "PowerShell(.\\\\.venv\\\\Scripts\\\\python.exe -c \"import goldtrader.supervisor.loop, goldtrader.strategy.exits; print\\('IMPORTS OK'\\)\" 2>&1)",
+      "mcp__claude_ai_Excalidraw__read_me",
+      "mcp__claude_ai_Excalidraw__create_view",
+      "PowerShell(.\\\\.venv\\\\Scripts\\\\python.exe scripts\\\\gen_flowchart.py 2>&1)",
+      "PowerShell(.\\\\.venv\\\\Scripts\\\\python.exe -c \"import goldtrader.supervisor.loop, goldtrader.learning.reflection, goldtrader.cli, goldtrader.strategy.exits; print\\('IMPORTS OK'\\)\" 2>&1)",
+      "PowerShell(.\\\\.venv\\\\Scripts\\\\python.exe -c \"import json; d=json.load\\(open\\('system-flow.excalidraw',encoding='utf-8'\\)\\); print\\('valid:', d['type'], len\\(d['elements']\\), 'elements'\\)\")"
+    ]
+  }
+}
