@@ -5,17 +5,31 @@ from goldtrader.types import Action
 
 def test_net_series_long_minus_short():
     rows = [
-        {"m_money_positions_long_all": "200000", "m_money_positions_short_all": "50000"},
-        {"m_money_positions_long_all": "150000", "m_money_positions_short_all": "60000"},
+        {"report_date_as_yyyy_mm_dd": "2026-05-26", "noncomm_positions_long_all": "200000",
+         "noncomm_positions_short_all": "50000"},
+        {"report_date_as_yyyy_mm_dd": "2026-05-19", "noncomm_positions_long_all": "150000",
+         "noncomm_positions_short_all": "60000"},
     ]
     assert net_series(rows) == [150000.0, 90000.0]
 
 
 def test_net_series_skips_bad_rows():
     rows = [
-        {"m_money_positions_long_all": "100", "m_money_positions_short_all": "40"},
-        {"m_money_positions_long_all": None, "m_money_positions_short_all": "40"},
+        {"report_date_as_yyyy_mm_dd": "2026-05-26", "noncomm_positions_long_all": "100",
+         "noncomm_positions_short_all": "40"},
+        {"report_date_as_yyyy_mm_dd": "2026-05-19", "noncomm_positions_long_all": None,
+         "noncomm_positions_short_all": "40"},
         {"other": "x"},
+    ]
+    assert net_series(rows) == [60.0]
+
+
+def test_net_series_dedups_by_date():
+    rows = [
+        {"report_date_as_yyyy_mm_dd": "2026-05-26", "noncomm_positions_long_all": "100",
+         "noncomm_positions_short_all": "40"},
+        {"report_date_as_yyyy_mm_dd": "2026-05-26", "noncomm_positions_long_all": "999",
+         "noncomm_positions_short_all": "1"},  # duplicate date -> ignored
     ]
     assert net_series(rows) == [60.0]
 

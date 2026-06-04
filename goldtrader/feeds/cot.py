@@ -1,10 +1,10 @@
 """CFTC Commitments of Traders (COT) provider for the positioning-extreme gate (V7 P1a).
 
-Source: CFTC public Socrata API (free, no key) — disaggregated futures-only report.
-We pull managed-money long/short for COMEX gold, compute the weekly NET position and a
-52-week z-score, and cache it to disk (COT is weekly, released Fridays). The gate uses the
-z-score to avoid chasing a crowded extreme into exhaustion — the top failure mode of momentum
-trend-followers.
+Source: CFTC public Socrata API (free, no key) — legacy futures report (6dca-aqww).
+We pull NON-COMMERCIAL long/short for COMEX gold (code 088691) — large speculators, the
+standard gold "smart money" proxy — compute the weekly NET position and a 52-week z-score,
+and cache it to disk (COT is weekly, released Fridays). The gate uses the z-score to avoid
+chasing a crowded extreme into exhaustion — the top failure mode of momentum trend-followers.
 
 Pure functions (`net_series`, `zscore`, `cot_gate`) take plain numbers so they unit-test
 without network. The gate FAILS OPEN: missing COT data never blocks trading (it is a quality
@@ -38,14 +38,24 @@ class CotSnapshot:
 
 
 def net_series(rows: list[dict]) -> list[float]:
-    """Managed-money NET (long-short) per week from CFTC rows (most-recent first preserved)."""
+    """Non-commercial NET (long-short) per week, most-recent first, deduped by report date.
+
+    Dedup guards against the dataset carrying more than one report row per week for the
+    same contract (which would distort the z-score).
+    """
     out: list[float] = []
+    seen: set[str] = set()
     for r in rows:
+        date = str(r.get("report_date_as_yyyy_mm_dd", ""))[:10]
+        if date and date in seen:
+            continue
         try:
-            lng = float(r["m_money_positions_long_all"])
-            sht = float(r["m_money_positions_short_all"])
+            lng = float(r["noncomm_positions_long_all"])
+            sht = float(r["noncomm_positions_short_all"])
         except (KeyError, TypeError, ValueError):
             continue
+        if date:
+            seen.add(date)
         out.append(lng - sht)
     return out
 
@@ -106,7 +116,7 @@ class CotProvider:
     def _refresh(self) -> bool:
         params = {
             "$where": f"cftc_contract_market_code='{self.s.cot_contract_code}'",
-            "$select": "report_date_as_yyyy_mm_dd,m_money_positions_long_all,m_money_positions_short_all",
+            "$select": "report_date_as_yyyy_mm_dd,noncomm_positions_long_all,noncomm_positions_short_all",
             "$order": "report_date_as_yyyy_mm_dd DESC",
             "$limit": "60",
         }

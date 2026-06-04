@@ -169,6 +169,12 @@ class Settings(BaseSettings):
     cot_extreme_z: float = Field(default=1.5)
     cot_contract_code: str = Field(default="088691")  # COMEX gold (CFTC market code)
     cot_refresh_hours: float = Field(default=24.0)     # weekly data; re-check daily
+    # Bias-input overhaul: inject gold-commodity framing + real-yield/dollar (FRED) + COT
+    # + gold news into the TradingAgents bias prompt. Degrades gracefully if a feed is down.
+    bias_context_injection_enabled: bool = Field(default=True)
+    fred_api_key: SecretStr | None = Field(default=None)  # free key; macro context skipped if unset
+    news_rss_urls: str = Field(default="https://www.fxstreet.com/rss/news,https://feeds.marketwatch.com/marketwatch/marketpulse/")
+    news_digest_count: int = Field(default=8)
 
     # ---------- Notifications ----------
     telegram_bot_token: SecretStr | None = Field(default=None)
@@ -238,6 +244,14 @@ class Settings(BaseSettings):
         return DATA_DIR / "cot_cache.json"
 
     @property
+    def macro_cache_file(self) -> Path:
+        return DATA_DIR / "macro_cache.json"
+
+    @property
+    def news_cache_file(self) -> Path:
+        return DATA_DIR / "news_cache.json"
+
+    @property
     def log_file(self) -> Path:
         return LOGS_DIR / "goldtrader.jsonl"
 
@@ -249,7 +263,7 @@ class Settings(BaseSettings):
     @field_validator(
         "mt5_login", "mt5_password", "mt5_server", "mt5_terminal_path",
         "telegram_bot_token", "telegram_chat_id", "llm_api_key", "dashboard_token",
-        "finnhub_api_key",
+        "finnhub_api_key", "fred_api_key",
         mode="before",
     )
     @classmethod
