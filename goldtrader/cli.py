@@ -8,6 +8,8 @@ Usage (from the venv):
   python -m goldtrader.cli run-once       # run a single supervisor tick (respects DRY_RUN)
   python -m goldtrader.cli reflect        # run the reflection / self-heal report now
   python -m goldtrader.cli status         # show state + defensive mode + journal performance
+  python -m goldtrader.cli backtest-fetch # pull + cache MT5 history for the backtest (needs MT5)
+  python -m goldtrader.cli backtest       # run the offline backtest on cached history (no MT5)
   python -m goldtrader.cli kill           # create the kill switch
   python -m goldtrader.cli unkill         # remove the kill switch
 """
@@ -174,6 +176,48 @@ def reflect():
     print(f"report written under {s.reflections_dir}")
 
 
+def backtest_fetch():
+    from .backtest.data import fetch_and_cache
+
+    s = get_settings()
+    print(f"Fetching MT5 history (~{s.backtest_bars} {s.trigger_timeframe} bars)...")
+    summary = fetch_and_cache(s)
+    for tf, info in summary.items():
+        print(f"  tf={tf}: {info['bars']} bars")
+    print(f"Cached under {s.backtest_dir}. Now run: python -m goldtrader.cli backtest")
+
+
+def backtest():
+    import json
+
+    from .backtest.data import load_bars, load_spec
+    from .backtest.engine import run_backtest
+
+    s = get_settings()
+    bars = load_bars(s)
+    spec = load_spec(s)
+    res = run_backtest(s, bars, spec)
+    st = res.stats
+    print(f"=== Backtest: {res.label} ===")
+    print(f"  trades={st.trades}  win_rate={st.win_rate:.1%} "
+          f"(95% CI {st.win_rate_ci[0]:.1%}-{st.win_rate_ci[1]:.1%})")
+    print(f"  expectancy={st.expectancy:+.3f}R/trade "
+          f"(95% CI {st.expectancy_ci[0]:+.3f}..{st.expectancy_ci[1]:+.3f})")
+    print(f"  profit_factor={st.profit_factor:.2f}  total={st.total_r:+.1f}R")
+    print(f"  max_drawdown={st.max_drawdown_r:.1f}R  max_consec_losses={st.max_consecutive_losses}")
+    print(f"  Monte-Carlo drawdown: p50={st.mc_drawdown_p50:.1f}R  p95={st.mc_drawdown_p95:.1f}R")
+    if st.trades < 30:
+        print("  EDGE: insufficient sample (need >=30 trades for a meaningful read)")
+    elif st.expectancy_ci[0] > 0:
+        print("  EDGE: POSITIVE — 95% CI excludes zero (after modeled costs)")
+    else:
+        print("  EDGE: NOT proven — expectancy CI includes zero")
+    # Persist the trade log for inspection.
+    out = s.backtest_dir / "last_run.json"
+    out.write_text(json.dumps([t.__dict__ for t in res.trades], indent=2), encoding="utf-8")
+    print(f"  trade log -> {out}")
+
+
 def kill():
     from .safety.guards import trip_kill_switch
 
@@ -198,6 +242,8 @@ _COMMANDS = {
     "run-once": run_once,
     "reflect": reflect,
     "status": status,
+    "backtest-fetch": backtest_fetch,
+    "backtest": backtest,
     "kill": kill,
     "unkill": unkill,
 }

@@ -176,6 +176,13 @@ class Settings(BaseSettings):
     news_rss_urls: str = Field(default="https://www.fxstreet.com/rss/news,https://feeds.marketwatch.com/marketwatch/marketpulse/")
     news_digest_count: int = Field(default=8)
 
+    # ---------- Backtest / validation lab (V7 Phase 2) ----------
+    backtest_bars: int = Field(default=6000)            # M30 bars to pull (~125 trading days)
+    backtest_warmup_bars: int = Field(default=250)      # bars skipped before the first decision
+    backtest_cost_spread_points: float = Field(default=30.0)    # round-trip spread cost (broker points)
+    backtest_cost_slippage_points: float = Field(default=5.0)   # per-side slippage (broker points)
+    backtest_seed: int = Field(default=42)              # bootstrap / Monte-Carlo reproducibility
+
     # ---------- Notifications ----------
     telegram_bot_token: SecretStr | None = Field(default=None)
     telegram_chat_id: str | None = Field(default=None)
@@ -242,6 +249,10 @@ class Settings(BaseSettings):
     def cot_cache_file(self) -> Path:
         # Cached CFTC COT snapshot (weekly data; survives restarts).
         return DATA_DIR / "cot_cache.json"
+
+    @property
+    def backtest_dir(self) -> Path:
+        return DATA_DIR / "backtest"
 
     @property
     def macro_cache_file(self) -> Path:
