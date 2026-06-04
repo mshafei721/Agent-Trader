@@ -67,20 +67,27 @@ class BacktestResult:
 
 def run_backtest(s: Settings, bars_by_tf: dict[int, pd.DataFrame], spec: SymbolSpec,
                  *, label: str | None = None, model_management: bool = True,
-                 apply_session: bool = False, cot_zseries=None) -> BacktestResult:
+                 apply_session: bool = False, cot_zseries=None,
+                 apply_regime: bool = False, regime_period: int = 20,
+                 regime_min_er: float = 0.0) -> BacktestResult:
     """Replay over cached history.
 
     apply_session: also apply the London-NY session-time entry gate (uses bar UTC time).
     cot_zseries: optional sorted list of (epoch, zscore) for the historical CFTC COT gate;
                  when given, blocks entries that chase a crowded positioning extreme as-of
                  the decision date (FAILS OPEN before the first report).
+    apply_regime: only enter when the trigger-timeframe Kaufman Efficiency Ratio over
+                 regime_period bars >= regime_min_er (i.e. the market is genuinely trending,
+                 not chopping) — the experiment to cut range-bound bleed.
     """
     trigger_tf = _tf(s.trigger_timeframe)
     m30 = bars_by_tf[trigger_tf]
     tf_s = TF_SECONDS[trigger_tf]
     n = len(m30)
+    er = _efficiency_ratio(m30["close"], regime_period) if apply_regime else None
     if label is None:
-        gates = "".join(["+sess" if apply_session else "", "+cot" if cot_zseries else ""])
+        gates = "".join(["+sess" if apply_session else "", "+cot" if cot_zseries else "",
+                         "+rgm" if apply_regime else ""])
         label = ("managed" if model_management else "fixed-tp") + gates
 
     bt = BacktestClient(s, spec, bars_by_tf, spread_points=s.backtest_cost_spread_points)
@@ -114,6 +121,9 @@ def run_backtest(s: Settings, bars_by_tf: dict[int, pd.DataFrame], spec: SymbolS
             if z is not None and not cot_gate(sig.side, z, s.cot_extreme_z)[0]:
                 i += 1
                 continue
+        if er is not None and er[i] < regime_min_er:  # regime gate: skip choppy markets
+            i += 1
+            continue
         decision = risk.evaluate(OrderIntent(side=sig.side, confidence=sig.score,
                                              rationale="backtest", signal_hash="bt"))
         if not decision.approved:
@@ -224,6 +234,16 @@ def _simulate_managed_exit(s: Settings, is_buy: bool, entry: float, sl: float, t
                     sl = new_sl
     # end of data -> mark remaining to market
     return realized + fraction * move_r(float(closes[n - 1])), "eod", n - 1, float(closes[n - 1]), scaled
+
+
+def _efficiency_ratio(close: pd.Series, period: int):
+    """Kaufman Efficiency Ratio per bar (causal): |net move| / sum|bar moves| over `period`.
+
+    ~1.0 = a clean directional trend; ~0.0 = choppy/ranging. NaN warmup -> 0 (gated out)."""
+    direction = (close - close.shift(period)).abs()
+    volatility = close.diff().abs().rolling(period).sum()
+    er = (direction / volatility.replace(0, float("nan"))).fillna(0.0)
+    return er.to_numpy()
 
 
 def _in_session_utc(epoch: int, s: Settings) -> bool:

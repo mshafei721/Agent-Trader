@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from goldtrader.backtest import stats as st
 from goldtrader.backtest.engine import (
     _cot_z_asof,
+    _efficiency_ratio,
     _in_session_utc,
     _precompute_management_series,
     _simulate_managed_exit,
@@ -168,6 +169,13 @@ def test_in_session_utc():
     three = int(datetime(2026, 6, 4, 3, 0, tzinfo=timezone.utc).timestamp())
     assert _in_session_utc(ten, s) is True
     assert _in_session_utc(three, s) is False
+
+
+def test_efficiency_ratio_trend_vs_chop():
+    trend = pd.Series([100.0 + i for i in range(20)])      # monotonic -> ER 1.0
+    assert _efficiency_ratio(trend, 10)[-1] == 1.0
+    chop = pd.Series([100.0 + (i % 2) for i in range(20)])  # 100,101,100,... -> ER ~0
+    assert _efficiency_ratio(chop, 10)[-1] < 0.5
 
 
 def test_cot_z_asof_picks_most_recent_prior_report():
