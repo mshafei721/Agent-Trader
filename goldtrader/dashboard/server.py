@@ -56,6 +56,14 @@ def create_app() -> FastAPI:
     async def journal():
         return await asyncio.to_thread(readers.read_journal, s)
 
+    @app.get("/api/equity")
+    async def equity():
+        return await asyncio.to_thread(readers.read_equity, s)
+
+    @app.get("/api/safety")
+    async def safety():
+        return await asyncio.to_thread(readers.read_safety, s)
+
     @app.get("/api/bias")
     async def bias():
         return readers.read_bias(s)
@@ -122,6 +130,10 @@ def create_app() -> FastAPI:
             "bias_exit_conviction": s.bias_exit_conviction,
             "defensive_loss_streak": s.defensive_loss_streak,
             "defensive_pause_streak": s.defensive_pause_streak,
+            # Non-sensitive risk figures for the run-once exposure estimate + safety card.
+            "risk_pct_per_trade": s.risk_pct_per_trade,
+            "max_daily_loss_pct": s.max_daily_loss_pct,
+            "max_total_loss_pct": s.max_total_loss_pct,
             "auth_required": s.dashboard_token is not None,
         }
 

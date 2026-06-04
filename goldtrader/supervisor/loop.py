@@ -527,6 +527,7 @@ class Supervisor:
                 write_heartbeat(self.s.heartbeat_file, {
                     "symbol": self.client.symbol,
                     "dry_run": self.s.dry_run,
+                    "trade_mode": self.client.trade_mode,  # 0=demo,1=contest,2=real
                     "next_manage_ts": now + interval,
                     "next_entry_ts": last_entry + entry_period,
                     "next_bias_ts": last_bias + bias_period,

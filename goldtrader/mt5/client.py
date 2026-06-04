@@ -36,6 +36,7 @@ class MT5Client:
         self.symbol: Optional[str] = None
         self.spec: Optional[SymbolSpec] = None
         self._connected = False
+        self.trade_mode: Optional[int] = None  # MT5 account trade_mode: 0=demo,1=contest,2=real
 
     # ---------------- connection ----------------
     @with_backoff(exceptions=(MT5ConnectionError,), max_tries=4, base=2.0, cap=20.0)
@@ -61,6 +62,7 @@ class MT5Client:
 
             # HARD demo guard.
             assert_demo(ai.trade_mode, self.s)
+            self.trade_mode = int(ai.trade_mode)
 
             if not ai.trade_allowed:
                 log.error(
