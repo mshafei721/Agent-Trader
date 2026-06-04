@@ -17,6 +17,7 @@ from datetime import datetime, timedelta, timezone
 
 from ..config import get_settings
 from ..feeds.calendar import EconomicCalendar
+from ..feeds.cot import CotProvider
 from ..healing.circuit_breaker import CircuitBreaker
 from ..healing.heartbeat import write_heartbeat
 from ..learning.journal import Journal
@@ -51,6 +52,7 @@ class Supervisor:
         self.reflection = ReflectionEngine(self.s, self.journal, self.notifier)
         self.breaker = CircuitBreaker(state_path=self.s.circuit_breaker_file)
         self.calendar = EconomicCalendar(self.s)
+        self.cot = CotProvider(self.s)
         self.state = SupervisorState.load(self.s.state_file)
         self._stop = False
 
@@ -359,6 +361,16 @@ class Supervisor:
             sg = guards.entry_spread_ok(spread_pts, s)
             if not sg.allowed:
                 log.info("spread_guard_triggered", reason=sg.reason)
+                return
+        # COT positioning gate: don't chase a crowded managed-money extreme (FAILS OPEN)
+        if s.cot_gate_enabled:
+            try:
+                cot_ok, cot_reason = self.cot.gate(tech.side)
+            except Exception as exc:  # noqa: BLE001 — quality filter: never block on its failure
+                log.warning("cot_gate_error_proceeding", error=str(exc))
+                cot_ok = True
+            if not cot_ok:
+                log.info("cot_gate_triggered", reason=cot_reason)
                 return
 
         # defensive self-heal gate: pause NEW entries after a bad streak (deterministic)

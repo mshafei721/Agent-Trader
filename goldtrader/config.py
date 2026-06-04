@@ -161,6 +161,15 @@ class Settings(BaseSettings):
     # Absolute lot cap: hard clamp on lot size regardless of equity growth.
     max_lots_absolute: float = Field(default=1.0)
 
+    # ---------- Gold-native data feeds (V7 Phase 1) ----------
+    # CFTC COT positioning gate: block new entries that chase a crowded managed-money
+    # extreme (block longs when the 52-wk net z-score > +z, shorts when < -z). FAILS OPEN
+    # (a quality filter, not a safety guard) — missing COT data never blocks trading.
+    cot_gate_enabled: bool = Field(default=True)
+    cot_extreme_z: float = Field(default=1.5)
+    cot_contract_code: str = Field(default="088691")  # COMEX gold (CFTC market code)
+    cot_refresh_hours: float = Field(default=24.0)     # weekly data; re-check daily
+
     # ---------- Notifications ----------
     telegram_bot_token: SecretStr | None = Field(default=None)
     telegram_chat_id: str | None = Field(default=None)
@@ -222,6 +231,11 @@ class Settings(BaseSettings):
     def calendar_cache_file(self) -> Path:
         # Cached economic-calendar events (resilient across restarts; protects free-tier quota).
         return DATA_DIR / "calendar_cache.json"
+
+    @property
+    def cot_cache_file(self) -> Path:
+        # Cached CFTC COT snapshot (weekly data; survives restarts).
+        return DATA_DIR / "cot_cache.json"
 
     @property
     def log_file(self) -> Path:
