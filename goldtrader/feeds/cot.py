@@ -83,6 +83,58 @@ def cot_gate(side: Action, z: float | None, extreme_z: float) -> tuple[bool, str
     return True, f"cot ok (z={z:.2f})"
 
 
+def _fetch_rows(settings: Settings, limit: int) -> list[dict]:
+    params = {
+        "$where": f"cftc_contract_market_code='{settings.cot_contract_code}'",
+        "$select": "report_date_as_yyyy_mm_dd,noncomm_positions_long_all,noncomm_positions_short_all",
+        "$order": "report_date_as_yyyy_mm_dd DESC",
+        "$limit": str(limit),
+    }
+    url = CFTC_DATASET_URL + "?" + urllib.parse.urlencode(params)
+    req = urllib.request.Request(url, headers={"User-Agent": "goldtrader/1.0"})
+    with urllib.request.urlopen(req, timeout=15.0) as resp:  # noqa: S310 (trusted URL)
+        return json.loads(resp.read().decode("utf-8"))
+
+
+def historical_zseries(settings: Settings, weeks: int = 200) -> list[tuple[int, float]]:
+    """Fetch the full gold COT history and return [(report_epoch_utc, z52), ...] ascending.
+
+    Each week's z-score uses its own trailing 52 weeks (causal). For the backtest's
+    as-of COT gate. Returns [] on any failure (gate then degrades open).
+    """
+    try:
+        rows = _fetch_rows(settings, weeks)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("cot_history_failed", error=str(exc))
+        return []
+    # rows are most-recent first; dedup by date, keep (date, net) aligned.
+    seen: set[str] = set()
+    dated: list[tuple[str, float]] = []
+    for r in rows:
+        date = str(r.get("report_date_as_yyyy_mm_dd", ""))[:10]
+        if not date or date in seen:
+            continue
+        try:
+            net = float(r["noncomm_positions_long_all"]) - float(r["noncomm_positions_short_all"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        seen.add(date)
+        dated.append((date, net))
+    nets = [d[1] for d in dated]
+    out: list[tuple[int, float]] = []
+    for i, (date, _) in enumerate(dated):
+        z = zscore(nets[i], nets[i + 1:i + 53])
+        if z is None:
+            continue
+        try:
+            epoch = int(datetime.fromisoformat(date).replace(tzinfo=timezone.utc).timestamp())
+        except ValueError:
+            continue
+        out.append((epoch, z))
+    out.sort(key=lambda t: t[0])
+    return out
+
+
 class CotProvider:
     """Fetches + caches the COMEX-gold COT snapshot; degrades gracefully to None."""
 
