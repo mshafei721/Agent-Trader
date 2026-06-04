@@ -18,12 +18,15 @@ timeframe as a proxy for the M15 cut signal.
 """
 from __future__ import annotations
 
+import bisect
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 
 import numpy as np
 import pandas as pd
 
 from ..config import Settings
+from ..feeds.cot import cot_gate
 from ..logging_setup import get_logger
 from ..risk.manager import RiskManager
 from ..strategy.exits import chandelier_stop, ratchet_stop, should_cut_loss
@@ -63,13 +66,22 @@ class BacktestResult:
 
 
 def run_backtest(s: Settings, bars_by_tf: dict[int, pd.DataFrame], spec: SymbolSpec,
-                 *, label: str | None = None, model_management: bool = True) -> BacktestResult:
+                 *, label: str | None = None, model_management: bool = True,
+                 apply_session: bool = False, cot_zseries=None) -> BacktestResult:
+    """Replay over cached history.
+
+    apply_session: also apply the London-NY session-time entry gate (uses bar UTC time).
+    cot_zseries: optional sorted list of (epoch, zscore) for the historical CFTC COT gate;
+                 when given, blocks entries that chase a crowded positioning extreme as-of
+                 the decision date (FAILS OPEN before the first report).
+    """
     trigger_tf = _tf(s.trigger_timeframe)
     m30 = bars_by_tf[trigger_tf]
     tf_s = TF_SECONDS[trigger_tf]
     n = len(m30)
     if label is None:
-        label = "managed" if model_management else "fixed-tp"
+        gates = "".join(["+sess" if apply_session else "", "+cot" if cot_zseries else ""])
+        label = ("managed" if model_management else "fixed-tp") + gates
 
     bt = BacktestClient(s, spec, bars_by_tf, spread_points=s.backtest_cost_spread_points)
     tech = TechnicalEngine(s, bt)
@@ -87,11 +99,21 @@ def run_backtest(s: Settings, bars_by_tf: dict[int, pd.DataFrame], spec: SymbolS
     trades: list[Trade] = []
     i = max(s.backtest_warmup_bars, 1)
     while i < n - 1:
-        bt.set_cursor(int(times[i]) + tf_s)  # decision at the close of bar i
+        decision_instant = int(times[i]) + tf_s
+        bt.set_cursor(decision_instant)  # decision at the close of bar i
         sig = tech.evaluate()
         if sig.side is None:
             i += 1
             continue
+        # --- optional deterministic gold gates (A/B against the bare technical baseline) ---
+        if apply_session and not _in_session_utc(decision_instant, s):
+            i += 1
+            continue
+        if cot_zseries is not None:
+            z = _cot_z_asof(cot_zseries, decision_instant)
+            if z is not None and not cot_gate(sig.side, z, s.cot_extreme_z)[0]:
+                i += 1
+                continue
         decision = risk.evaluate(OrderIntent(side=sig.side, confidence=sig.score,
                                              rationale="backtest", signal_hash="bt"))
         if not decision.approved:
@@ -202,6 +224,24 @@ def _simulate_managed_exit(s: Settings, is_buy: bool, entry: float, sl: float, t
                     sl = new_sl
     # end of data -> mark remaining to market
     return realized + fraction * move_r(float(closes[n - 1])), "eod", n - 1, float(closes[n - 1]), scaled
+
+
+def _in_session_utc(epoch: int, s: Settings) -> bool:
+    hour = datetime.fromtimestamp(epoch, tz=timezone.utc).hour
+    start, end = s.trading_session_start_utc, s.trading_session_end_utc
+    if start <= end:
+        return start <= hour < end
+    return hour >= start or hour < end
+
+
+def _cot_z_asof(zseries, epoch: int):
+    """Most-recent COT z-score with report epoch <= `epoch` (None before the first report).
+    `zseries` is a list of (epoch, z) sorted ascending by epoch."""
+    epochs = [e for e, _ in zseries]
+    idx = bisect.bisect_right(epochs, epoch) - 1
+    if idx < 0:
+        return None
+    return zseries[idx][1]
 
 
 def _walk_exit(is_buy: bool, sl: float, tp: float, entry: float,

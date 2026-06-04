@@ -4,8 +4,12 @@ import math
 import numpy as np
 import pandas as pd
 
+from datetime import datetime, timezone
+
 from goldtrader.backtest import stats as st
 from goldtrader.backtest.engine import (
+    _cot_z_asof,
+    _in_session_utc,
     _precompute_management_series,
     _simulate_managed_exit,
     _walk_exit,
@@ -156,6 +160,22 @@ def test_managed_exit_clean_take_profit():
         entry_idx=0, n=n, highs=highs, lows=lows, closes=closes, mgmt=mgmt)
     assert reason == "tp" and px == 104.0 and not scaled
     assert abs(r - 2.0) < 1e-9  # (104-100)/2 = +2R
+
+
+def test_in_session_utc():
+    s = Settings(trading_session_start_utc=7, trading_session_end_utc=17)
+    ten = int(datetime(2026, 6, 4, 10, 0, tzinfo=timezone.utc).timestamp())
+    three = int(datetime(2026, 6, 4, 3, 0, tzinfo=timezone.utc).timestamp())
+    assert _in_session_utc(ten, s) is True
+    assert _in_session_utc(three, s) is False
+
+
+def test_cot_z_asof_picks_most_recent_prior_report():
+    zseries = [(100, 0.5), (200, 1.0), (300, -1.0)]
+    assert _cot_z_asof(zseries, 50) is None     # before first report
+    assert _cot_z_asof(zseries, 150) == 0.5
+    assert _cot_z_asof(zseries, 250) == 1.0
+    assert _cot_z_asof(zseries, 999) == -1.0
 
 
 def test_managed_exit_scales_out_then_eod():
