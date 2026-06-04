@@ -196,9 +196,10 @@ def backtest():
     s = get_settings()
     bars = load_bars(s)
     spec = load_spec(s)
-    res = run_backtest(s, bars, spec)
+    res = run_backtest(s, bars, spec, model_management=s.backtest_model_management)
     st = res.stats
-    print(f"=== Backtest: {res.label} ===")
+    print(f"=== Backtest: {res.label} exits "
+          f"(tp_mult={s.atr_tp_mult} sl_mult={s.atr_sl_mult} adx_min={s.adx_min_trend}) ===")
     print(f"  trades={st.trades}  win_rate={st.win_rate:.1%} "
           f"(95% CI {st.win_rate_ci[0]:.1%}-{st.win_rate_ci[1]:.1%})")
     print(f"  expectancy={st.expectancy:+.3f}R/trade "

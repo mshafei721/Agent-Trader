@@ -5,7 +5,12 @@ import numpy as np
 import pandas as pd
 
 from goldtrader.backtest import stats as st
-from goldtrader.backtest.engine import _walk_exit, run_backtest
+from goldtrader.backtest.engine import (
+    _precompute_management_series,
+    _simulate_managed_exit,
+    _walk_exit,
+    run_backtest,
+)
 from goldtrader.config import Settings
 from goldtrader.types import SymbolSpec
 
@@ -114,12 +119,59 @@ def test_run_backtest_end_to_end_offline():
     bars = {mt5.TIMEFRAME_M30: m30, mt5.TIMEFRAME_H1: h1, mt5.TIMEFRAME_H4: h4}
 
     s = Settings(backtest_warmup_bars=120, backtest_seed=11, atr_max_pct=99.0)
-    res = run_backtest(s, bars, GOLD_SPEC, label="synthetic")
-    # The replay must complete and produce a coherent result.
-    assert res.stats is not None
-    assert isinstance(res.trades, list)
-    assert res.stats.trades == len(res.trades)
-    assert len(res.trades) > 0  # the oscillating uptrend should trigger at least one buy
-    for t in res.trades:
-        assert t.side in ("BUY", "SELL")
-        assert t.reason in ("tp", "sl", "sl(both)", "eod")
+    valid_reasons = {"tp", "sl", "sl(both)", "eod", "trail", "cut"}
+    for managed in (False, True):
+        res = run_backtest(s, bars, GOLD_SPEC, model_management=managed)
+        assert res.stats is not None
+        assert isinstance(res.trades, list)
+        assert res.stats.trades == len(res.trades)
+        assert len(res.trades) > 0  # the oscillating uptrend should trigger at least one buy
+        for t in res.trades:
+            assert t.side in ("BUY", "SELL")
+            assert t.reason in valid_reasons
+
+
+# ---------------- managed exit simulation ----------------
+def test_precompute_management_series_shapes():
+    df = _trend_df(200, 1800, 1_700_000_000, base=2000.0, drift=0.1, amp=3.0, period=15)
+    s = Settings()
+    m = _precompute_management_series(df, s)
+    assert set(m) == {"atr", "swing_high", "swing_low", "fast_trend"}
+    assert len(m["atr"]) == len(df) == len(m["fast_trend"])
+
+
+def test_managed_exit_clean_take_profit():
+    # Price marches straight up to TP with no pullback -> full position exits at TP (+R:R).
+    n = 40
+    entry = 100.0
+    highs = np.array([entry + 0.5 + 0.5 * k for k in range(n)])
+    lows = np.array([entry - 0.5 + 0.5 * k for k in range(n)])
+    closes = np.array([entry + 0.5 * k for k in range(n)])
+    mgmt = {"atr": np.full(n, 1.0), "swing_high": highs, "swing_low": lows,
+            "fast_trend": np.ones(n, dtype=int)}
+    # disable scale-out/breakeven so we isolate the TP path
+    s = Settings(partial_tp_r=0.0, breakeven_at_r=99.0, cut_loss_enabled=False)
+    r, reason, idx, px, scaled = _simulate_managed_exit(
+        s, True, entry=entry, sl=98.0, tp=104.0, sl_distance=2.0,
+        entry_idx=0, n=n, highs=highs, lows=lows, closes=closes, mgmt=mgmt)
+    assert reason == "tp" and px == 104.0 and not scaled
+    assert abs(r - 2.0) < 1e-9  # (104-100)/2 = +2R
+
+
+def test_managed_exit_scales_out_then_eod():
+    # Rises to +1R (scale-out half), then drifts flat to end-of-data.
+    n = 30
+    entry = 100.0
+    closes = np.array([100.0 + min(k, 5) * 0.4 for k in range(n)])  # up to 102 then flat
+    highs = closes + 0.2
+    lows = closes - 0.2
+    mgmt = {"atr": np.full(n, 1.0), "swing_high": highs, "swing_low": lows,
+            "fast_trend": np.ones(n, dtype=int)}
+    s = Settings(partial_tp_r=1.0, breakeven_at_r=0.5, cut_loss_enabled=False,
+                 trail_atr_mult=10.0)  # loose trail so the stop isn't hit
+    r, reason, idx, px, scaled = _simulate_managed_exit(
+        s, True, entry=entry, sl=98.0, tp=200.0, sl_distance=2.0,
+        entry_idx=0, n=n, highs=highs, lows=lows, closes=closes, mgmt=mgmt)
+    assert scaled is True
+    assert reason in ("eod", "trail")
+    assert r > 0  # banked half at +1R, remainder closed in profit

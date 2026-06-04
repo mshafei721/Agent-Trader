@@ -182,6 +182,9 @@ class Settings(BaseSettings):
     backtest_cost_spread_points: float = Field(default=30.0)    # round-trip spread cost (broker points)
     backtest_cost_slippage_points: float = Field(default=5.0)   # per-side slippage (broker points)
     backtest_seed: int = Field(default=42)              # bootstrap / Monte-Carlo reproducibility
+    # True = simulate the live management stack (scale-out + Chandelier trail + breakeven +
+    # early-cut); False = raw fixed SL/TP baseline.
+    backtest_model_management: bool = Field(default=True)
 
     # ---------- Notifications ----------
     telegram_bot_token: SecretStr | None = Field(default=None)
