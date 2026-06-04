@@ -10,6 +10,7 @@ Usage (from the venv):
   python -m goldtrader.cli status         # show state + defensive mode + journal performance
   python -m goldtrader.cli backtest-fetch # pull + cache MT5 history for the backtest (needs MT5)
   python -m goldtrader.cli backtest       # run the offline backtest on cached history (no MT5)
+  python -m goldtrader.cli walkforward    # walk-forward (out-of-sample) parameter validation
   python -m goldtrader.cli kill           # create the kill switch
   python -m goldtrader.cli unkill         # remove the kill switch
 """
@@ -219,6 +220,23 @@ def backtest():
     print(f"  trade log -> {out}")
 
 
+def walkforward():
+    from .backtest.data import load_bars, load_spec
+    from .backtest.walkforward import DEFAULT_GRID, format_report, run_grid, walk_forward
+    from .feeds.cot import historical_zseries
+
+    s = get_settings()
+    bars = load_bars(s)
+    spec = load_spec(s)
+    print(f"Running walk-forward over {len(DEFAULT_GRID)} configs (one backtest each)...")
+    zs = historical_zseries(s) or None
+    if not zs:
+        print("  (COT history unavailable — COT-gated configs degrade to no-gate)")
+    grid_trades = run_grid(s, bars, spec, zs, DEFAULT_GRID)
+    wf = walk_forward(grid_trades, n_folds=3, train_frac=0.5, seed=s.backtest_seed)
+    print(format_report(wf, grid_trades, s.backtest_seed))
+
+
 def kill():
     from .safety.guards import trip_kill_switch
 
@@ -245,6 +263,7 @@ _COMMANDS = {
     "status": status,
     "backtest-fetch": backtest_fetch,
     "backtest": backtest,
+    "walkforward": walkforward,
     "kill": kill,
     "unkill": unkill,
 }
