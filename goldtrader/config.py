@@ -185,6 +185,7 @@ class Settings(BaseSettings):
     # True = simulate the live management stack (scale-out + Chandelier trail + breakeven +
     # early-cut); False = raw fixed SL/TP baseline.
     backtest_model_management: bool = Field(default=True)
+    backtest_dukascopy_years: int = Field(default=5)    # years of XAU/USD M30 to import (free, no key)
 
     # ---------- Notifications ----------
     telegram_bot_token: SecretStr | None = Field(default=None)

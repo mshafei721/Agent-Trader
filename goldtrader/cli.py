@@ -9,6 +9,7 @@ Usage (from the venv):
   python -m goldtrader.cli reflect        # run the reflection / self-heal report now
   python -m goldtrader.cli status         # show state + defensive mode + journal performance
   python -m goldtrader.cli backtest-fetch # pull + cache MT5 history for the backtest (needs MT5)
+  python -m goldtrader.cli backtest-import# import years of XAU/USD M30 from Dukascopy (free, no key)
   python -m goldtrader.cli backtest       # run the offline backtest on cached history (no MT5)
   python -m goldtrader.cli walkforward    # walk-forward (out-of-sample) parameter validation
   python -m goldtrader.cli kill           # create the kill switch
@@ -220,6 +221,17 @@ def backtest():
     print(f"  trade log -> {out}")
 
 
+def backtest_import():
+    from .backtest.dukascopy_import import import_history
+
+    s = get_settings()
+    print(f"Importing ~{s.backtest_dukascopy_years}yr XAU/USD M30 from Dukascopy (free, no key)...")
+    summary = import_history(s, years=s.backtest_dukascopy_years)
+    for tf, info in summary.items():
+        print(f"  tf={tf}: {info['bars']} bars")
+    print(f"Cached under {s.backtest_dir}. Run: python -m goldtrader.cli backtest  (or walkforward)")
+
+
 def walkforward():
     from .backtest.data import load_bars, load_spec
     from .backtest.walkforward import DEFAULT_GRID, format_report, run_grid, walk_forward
@@ -229,7 +241,7 @@ def walkforward():
     bars = load_bars(s)
     spec = load_spec(s)
     print(f"Running walk-forward over {len(DEFAULT_GRID)} configs (one backtest each)...")
-    zs = historical_zseries(s) or None
+    zs = historical_zseries(s, weeks=400) or None  # cover multi-year backtests
     if not zs:
         print("  (COT history unavailable — COT-gated configs degrade to no-gate)")
     grid_trades = run_grid(s, bars, spec, zs, DEFAULT_GRID)
@@ -262,6 +274,7 @@ _COMMANDS = {
     "reflect": reflect,
     "status": status,
     "backtest-fetch": backtest_fetch,
+    "backtest-import": backtest_import,
     "backtest": backtest,
     "walkforward": walkforward,
     "kill": kill,
