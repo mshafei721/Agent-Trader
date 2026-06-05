@@ -123,7 +123,9 @@ def _env_upsert(text: str, env_key: str, value) -> str:
         re.MULTILINE | re.IGNORECASE,
     )
     if pattern.search(text):
-        return pattern.sub(lambda m: m.group("pre") + str(value) + m.group("post"), text, count=1)
+        # Replace EVERY occurrence: a stray duplicate key would otherwise be loaded last by
+        # pydantic-settings and silently shadow a single-line edit (save looks applied but isn't).
+        return pattern.sub(lambda m: m.group("pre") + str(value) + m.group("post"), text)
     nl = "\r\n" if "\r\n" in text else "\n"
     sep = "" if (text == "" or text.endswith(("\n", "\r"))) else nl
     return text + sep + f"{env_key}={value}" + nl

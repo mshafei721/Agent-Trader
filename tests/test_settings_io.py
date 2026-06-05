@@ -67,6 +67,19 @@ def test_env_upsert_appends_when_absent():
     assert "DRY_RUN=true" in out
 
 
+def test_env_upsert_replaces_all_duplicate_keys():
+    # A stray duplicate would be loaded last by pydantic and shadow a first-only edit.
+    out = sio._env_upsert("ATR_TP_MULT=2.0\nFOO=1\nATR_TP_MULT=2.5\n", "ATR_TP_MULT", 3.5)
+    assert out.count("ATR_TP_MULT=3.5") == 2
+    assert "ATR_TP_MULT=2.0" not in out and "ATR_TP_MULT=2.5" not in out
+
+
+def test_env_upsert_key_not_matched_as_substring():
+    out = sio._env_upsert("FOO_ATR_TP_MULT=9\nATR_TP_MULT=2.0\n", "ATR_TP_MULT", 3.5)
+    assert "FOO_ATR_TP_MULT=9" in out          # untouched
+    assert "ATR_TP_MULT=3.5" in out
+
+
 def test_parse_env_strips_comments_and_quotes():
     env = sio._parse_env('ATR_TP_MULT=2.0   # c\nFOO="bar"\n# comment line\n\nBAZ=1')
     assert env["ATR_TP_MULT"] == "2.0"
