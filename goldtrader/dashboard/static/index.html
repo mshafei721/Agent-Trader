@@ -273,6 +273,43 @@
   .row .plain { color: var(--text); font-size: 12.5px; }
   .row.is-plain { grid-template-columns: 62px 1fr; }
 
+  /* ---------- pending-restart bar ---------- */
+  .pending-bar { display: flex; align-items: center; gap: 12px; padding: 9px 20px;
+    font-size: 12.5px; font-weight: 600; color: var(--warn);
+    background: oklch(0.68 0.15 65 / 0.12); border-bottom: 1px solid oklch(0.68 0.15 65 / 0.35); }
+  .pending-bar .b-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; animation: breathe 1.6s ease-in-out infinite; }
+  .pending-bar .sp { flex: 1; }
+  .pending-bar button { font: 600 12px/1 var(--sans); color: oklch(0.99 0.01 65); background: var(--warn);
+    border: none; padding: 7px 13px; border-radius: var(--r-sm); cursor: pointer; }
+  .pending-bar button:hover { filter: brightness(1.05); }
+
+  /* ---------- settings / presets ---------- */
+  .presets { display: flex; gap: 9px; flex-wrap: wrap; padding: 14px 17px 4px; }
+  .preset-btn { flex: 1; min-width: 150px; text-align: left; cursor: pointer; background: var(--surface);
+    border: 1px solid var(--border-2); border-radius: var(--r-sm); padding: 11px 13px; box-shadow: var(--shadow-sm);
+    transition: border-color 140ms, box-shadow 140ms, background 140ms; }
+  .preset-btn:hover { border-color: var(--accent); box-shadow: var(--shadow); }
+  .preset-btn b { font-size: 13px; color: var(--text); } .preset-btn span { display: block; font-size: 11px; color: var(--muted); margin-top: 3px; line-height: 1.4; }
+  .settings-note { padding: 4px 17px 0; font-size: 11.5px; color: var(--muted); line-height: 1.5; }
+  .settings-note b { color: var(--text); }
+  .settings-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px 16px; padding: 14px 17px; }
+  @media (max-width: 820px) { .settings-grid { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 560px) { .settings-grid { grid-template-columns: 1fr; } }
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  .field label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--faint); }
+  .field .frow { display: flex; align-items: baseline; gap: 7px; }
+  .field input { width: 78px; font: 500 13px var(--mono); padding: 6px 8px; border: 1px solid var(--border-2);
+    border-radius: var(--r-sm); background: var(--surface); color: var(--text); }
+  .field input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .field input.dirty { border-color: var(--accent); background: oklch(0.575 0.215 278 / 0.06); }
+  .field .rng { font-size: 10px; color: var(--faint); font-family: var(--mono); }
+  .settings-foot { display: flex; align-items: center; gap: 12px; padding: 6px 17px 16px; }
+  .settings-foot .sp { flex: 1; }
+  .diff-list { margin: 12px 0 0; display: grid; grid-template-columns: auto auto 1fr; gap: 5px 12px; font-size: 12.5px; }
+  .diff-list code { font-family: var(--mono); color: var(--accent); }
+  .diff-list .arrow { color: var(--faint); } .diff-list .to { font-family: var(--mono); font-weight: 600; }
+  .diff-list .clamp { color: var(--warn); font-size: 11px; }
+
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
   }
@@ -305,12 +342,13 @@
   </div>
   <div class="tsep"></div>
   <div class="tgroup">
-    <button class="act danger" data-act="stop" data-confirm="1">Stop supervisor</button>
-    <button class="act danger" data-act="restart" data-confirm="1">Restart</button>
+    <button class="act danger" data-act="supervisor/stop" data-confirm="1">Stop supervisor</button>
+    <button class="act danger" data-act="supervisor/restart" data-confirm="1">Restart</button>
   </div>
 </div>
 
 <div class="banner unknown" id="banner"><span class="b-dot"></span><span id="banner-text">checking mode…</span></div>
+<div class="pending-bar" id="pending-bar" hidden><span class="b-dot"></span><span class="sp" id="pending-text">Settings changed — restart to apply.</span><button id="pending-restart">Restart to apply</button></div>
 
 <main>
   <section class="panel" id="safety-panel">
@@ -369,6 +407,19 @@
       <div class="kpi" title="Total realized profit/loss in account currency for this window."><div class="k">Net PnL</div><div class="v" id="k-net">·</div></div>
     </div>
     <div class="body" id="trades-body"><span class="empty">loading…</span></div>
+  </section>
+
+  <section class="panel" id="settings-panel">
+    <h2>Settings &amp; risk presets <span class="tag muted" id="settings-auth"></span></h2>
+    <div class="settings-note">These change <b>trade frequency and drawdown posture</b> — not proven profitability (the 5-year lab found no setting that creates a real edge). The hard floor (risk %, loss caps, demo guard) is <b>never</b> editable here. Changes apply on the next restart.</div>
+    <div class="presets" id="presets"></div>
+    <div class="settings-grid" id="settings-grid"><span class="empty" style="padding:8px 0">loading…</span></div>
+    <div class="settings-foot">
+      <span class="muted faint" id="settings-status"></span>
+      <span class="sp"></span>
+      <button class="act" id="settings-reset" disabled>Reset</button>
+      <button class="act gold" id="settings-save" disabled>Save changes</button>
+    </div>
   </section>
 
   <section class="panel" id="logwrap">
@@ -436,6 +487,7 @@
       const [hc, hl] = healthMap[s.health] || healthMap.unknown;
       setPill("health", hc, hl);
       renderMode(s);
+      renderPending(!!s.settings_pending);
       setPill("kill", s.kill_switch ? "bad" : "up", s.kill_switch ? "kill: ON" : "kill: off");
       const w = s.watchdog || {};
       const wc = w.health === "up" ? "up" : w.health === "down" ? "idle" : "lag";
@@ -693,7 +745,7 @@
   }
 
   // ---------- actions ----------
-  const ACT_LABEL = { "kill": "Kill switch", "stop": "Stop supervisor", "restart": "Restart", "bias/refresh": "Refresh bias", "reflect": "Run reflection", "run-once": "Run once" };
+  const ACT_LABEL = { "kill": "Kill switch", "supervisor/stop": "Stop supervisor", "supervisor/restart": "Restart", "bias/refresh": "Refresh bias", "reflect": "Run reflection", "run-once": "Run once" };
   $("toolbar").addEventListener("click", (e) => {
     const btn = e.target.closest("button.act"); if (!btn) return;
     const act = btn.dataset.act;
@@ -807,6 +859,104 @@
       setTimeout(poll, 3000);
     };
     setTimeout(poll, 3000);
+  }
+
+  // ---------- settings & presets (P3.2) ----------
+  const SET_LABEL = {
+    adx_min_trend: "Trend strength floor (ADX)", atr_sl_mult: "Stop distance (×ATR)",
+    atr_tp_mult: "Target distance (×ATR)", trail_atr_mult: "Trailing stop (×ATR)",
+    breakeven_at_r: "Breakeven at (R)", cut_loss_at_r: "Early-cut threshold (R)",
+    partial_tp_r: "Scale-out at (R)", bias_veto_conviction: "LLM veto conviction",
+    bias_exit_conviction: "LLM exit conviction", min_conviction: "Min conviction",
+    ema_fast: "Fast EMA", ema_slow: "Slow EMA", cot_extreme_z: "COT extreme gate (z)",
+  };
+  let SET_BASE = {};   // param -> baseline value (on-disk)
+  function renderPending(on) { const bar = $("pending-bar"); if (bar) bar.hidden = !on; }
+  async function loadSettings() {
+    let d; try { d = await api("/api/settings"); } catch (e) { return; }
+    SET_BASE = {};
+    const grid = $("settings-grid"), params = d.params || {};
+    grid.innerHTML = Object.keys(params).map(p => {
+      const f = params[p]; SET_BASE[p] = f.value;
+      const step = (f.max - f.min) <= 5 ? "0.1" : "1";
+      return `<div class="field"><label title="${esc(p)}">${esc(SET_LABEL[p] || p)}</label>
+        <div class="frow"><input type="number" id="set-${esc(p)}" data-p="${esc(p)}" value="${f.value}"
+          min="${f.min}" max="${f.max}" step="${step}"><span class="rng">${f.min}–${f.max}</span></div></div>`;
+    }).join("");
+    grid.querySelectorAll("input").forEach(inp => inp.addEventListener("input", onSettingChange));
+    renderPresets(d.presets || {});
+    $("settings-auth").textContent = (CONFIG.auth_required ? "token required" : "");
+    updateSettingsDirty();
+  }
+  function renderPresets(presets) {
+    $("presets").innerHTML = Object.keys(presets).map(k => {
+      const pr = presets[k];
+      return `<div class="preset-btn" data-preset="${esc(k)}" title="${esc(Object.entries(pr.values).map(([a, b]) => a + '=' + b).join(', '))}"><b>${esc(pr.label)}</b><span>${esc(pr.note)}</span></div>`;
+    }).join("");
+    $("presets").querySelectorAll(".preset-btn").forEach(b => b.addEventListener("click", () => confirmPreset(b.dataset.preset, presets[b.dataset.preset])));
+  }
+  function onSettingChange(e) {
+    const inp = e.target;
+    inp.classList.toggle("dirty", parseFloat(inp.value) !== SET_BASE[inp.dataset.p]);
+    updateSettingsDirty();
+  }
+  function changedSettings() {
+    const out = {};
+    document.querySelectorAll("#settings-grid input").forEach(inp => {
+      const p = inp.dataset.p, v = parseFloat(inp.value);
+      if (!Number.isNaN(v) && v !== SET_BASE[p]) out[p] = v;
+    });
+    return out;
+  }
+  function updateSettingsDirty() {
+    const n = Object.keys(changedSettings()).length;
+    $("settings-save").disabled = n === 0; $("settings-reset").disabled = n === 0;
+    $("settings-status").textContent = n ? n + " unsaved change" + (n === 1 ? "" : "s") : "";
+  }
+  function clampNote(p, v) {
+    const f = document.getElementById("set-" + p); if (!f) return "";
+    const lo = parseFloat(f.min), hi = parseFloat(f.max);
+    if (v < lo) return ` (clamps to ${lo})`;
+    if (v > hi) return ` (clamps to ${hi})`;
+    return "";
+  }
+  function diffRows(updates) {
+    return Object.keys(updates).map(p =>
+      `<code>${esc(SET_LABEL[p] || p)}</code><span class="arrow">${SET_BASE[p]} →</span>` +
+      `<span class="to">${updates[p]}<span class="clamp">${clampNote(p, updates[p])}</span></span>`).join("");
+  }
+  function confirmSave() {
+    const updates = changedSettings();
+    if (!Object.keys(updates).length) return;
+    showModal(`<h3>Save settings</h3>
+      <div class="m-body">Write these to <code>.env</code> (a backup is kept). The bot keeps its current config until you restart.
+      <div class="diff-list">${diffRows(updates)}</div></div>
+      <div class="m-foot"><button class="act" id="m-cancel">Cancel</button><button class="act gold" id="m-go">Save (restart later)</button></div>`);
+    $("m-cancel").addEventListener("click", closeModal);
+    $("m-go").addEventListener("click", () => { closeModal(); postSettings({ updates }); });
+  }
+  function confirmPreset(key, pr) {
+    if (!pr) return;
+    const rows = Object.keys(pr.values).map(p =>
+      `<code>${esc(SET_LABEL[p] || p)}</code><span class="arrow">${SET_BASE[p] !== undefined ? SET_BASE[p] + " →" : "→"}</span><span class="to">${pr.values[p]}</span>`).join("");
+    showModal(`<h3>Apply preset: ${esc(pr.label)}</h3>
+      <div class="m-body">${esc(pr.note)}<div class="diff-list">${rows}</div>
+      <p class="faint" style="margin:12px 0 0">Writes to <code>.env</code> (backup kept). Restart to apply.</p></div>
+      <div class="m-foot"><button class="act" id="m-cancel">Cancel</button><button class="act gold" id="m-go">Apply ${esc(pr.label)}</button></div>`);
+    $("m-cancel").addEventListener("click", closeModal);
+    $("m-go").addEventListener("click", () => { closeModal(); postSettings({ preset: key }); });
+  }
+  async function postSettings(body) {
+    try {
+      const res = await api("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      if (res.ok) {
+        const cl = Object.keys(res.clamped || {}).length;
+        toast("Settings saved" + (cl ? " (" + cl + " clamped to safe range)" : "") + ". Restart to apply.", "ok");
+      } else {
+        toast("Settings: " + (res.message || "no change") + (res.rejected && res.rejected.length ? " — " + res.rejected.length + " rejected" : ""), "err");
+      }
+      await loadSettings(); pollStatus();
+    } catch (err) { toast("Save failed: " + err.message, "err"); }
   }
 
   // ---------- log stream ----------
@@ -941,10 +1091,24 @@
     es.onerror = () => { es.close(); setTimeout(streamLogs, 3000); };
   }
 
+  // ---------- settings wiring ----------
+  $("settings-save").addEventListener("click", confirmSave);
+  $("settings-reset").addEventListener("click", () => {
+    document.querySelectorAll("#settings-grid input").forEach(inp => { inp.value = SET_BASE[inp.dataset.p]; inp.classList.remove("dirty"); });
+    updateSettingsDirty();
+  });
+  $("pending-restart").addEventListener("click", () => {
+    showModal(`<h3>Restart to apply settings</h3>
+      <div class="m-body">Restart the supervisor so your saved settings take effect. Any open position stays on the broker; trade management resumes right after restart.</div>
+      <div class="m-foot"><button class="act" id="m-cancel">Cancel</button><button class="act confirm" id="m-go">Restart now</button></div>`);
+    $("m-cancel").addEventListener("click", closeModal);
+    $("m-go").addEventListener("click", () => { closeModal(); performAction("supervisor/restart", $("pending-restart")); });
+  });
+
   // ---------- boot ----------
   (async () => {
     try { CONFIG = await api("/api/config"); } catch (e) {}
-    await backfill(); streamLogs();
+    await backfill(); streamLogs(); loadSettings();
     const tick = () => { pollStatus(); pollPositions(); pollSafety(); };
     const slow = () => { pollJournal(); pollBias(); pollReflections(); pollEquity(); };
     tick(); slow();

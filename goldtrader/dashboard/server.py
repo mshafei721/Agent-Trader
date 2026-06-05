@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 
 from ..config import get_settings
 from ..logging_setup import get_logger
-from . import controls, readers
+from . import controls, readers, settings_io
 
 log = get_logger("goldtrader.dashboard")
 
@@ -116,6 +116,24 @@ def create_app() -> FastAPI:
     async def action_restart(x_dashboard_token: str | None = Header(default=None)):
         _require_token(x_dashboard_token)
         return await asyncio.to_thread(controls.restart_supervisor, s)
+
+    # ---------------- bounded settings (P3.2) ----------------
+    @app.get("/api/settings")
+    async def get_settings_view():
+        # Current tunable values + bounds + presets + pending-restart state (read-only).
+        return await asyncio.to_thread(settings_io.read_tunables, s)
+
+    @app.post("/api/settings")
+    async def post_settings(request: Request, x_dashboard_token: str | None = Header(default=None)):
+        _require_token(x_dashboard_token)
+        body = await _json_body(request)
+        preset = body.get("preset")
+        if preset:
+            return await asyncio.to_thread(settings_io.apply_preset, s, str(preset))
+        updates = body.get("updates")
+        if not isinstance(updates, dict):
+            raise HTTPException(status_code=400, detail="body must be {updates:{...}} or {preset:name}")
+        return await asyncio.to_thread(settings_io.apply_updates, s, updates)
 
     @app.get("/api/config")
     async def config():

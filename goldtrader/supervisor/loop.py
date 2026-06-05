@@ -66,6 +66,8 @@ class Supervisor:
         eq = self.client.equity()
         self.state.roll_day_if_needed(eq)
         self.state.save(self.s.state_file)
+        # We've just read .env, so any dashboard "restart to apply" marker is now satisfied.
+        self.s.settings_pending_file.unlink(missing_ok=True)
         self.notifier.notify(
             "supervisor started",
             f"symbol={self.client.symbol} equity={eq:.2f} dry_run={self.s.dry_run}",

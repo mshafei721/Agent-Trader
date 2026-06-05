@@ -37,6 +37,7 @@ TUNABLE_BOUNDS = {
     "min_conviction": (0.4, 0.8),
     "ema_fast": (5.0, 30.0),
     "ema_slow": (30.0, 100.0),
+    "cot_extreme_z": (0.5, 2.0),  # COT positioning gate threshold (P3.2 preset uses 1.0)
 }
 
 

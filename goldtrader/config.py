@@ -259,6 +259,13 @@ class Settings(BaseSettings):
         return DATA_DIR / "backtest"
 
     @property
+    def settings_pending_file(self) -> Path:
+        # Marks dashboard settings-writes that need a restart to take effect (config is
+        # read once at startup). The supervisor clears this on boot; the dashboard shows
+        # a "restart to apply" banner while it exists.
+        return DATA_DIR / "settings_pending.json"
+
+    @property
     def macro_cache_file(self) -> Path:
         return DATA_DIR / "macro_cache.json"
 

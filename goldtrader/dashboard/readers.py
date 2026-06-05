@@ -92,6 +92,7 @@ def read_status(s: Settings) -> dict:
             "dry_run": hb.get("dry_run") if hb else None,
             "trade_mode": hb.get("trade_mode") if hb else None,  # 0=demo,1=contest,2=real
             "kill_switch": s.kill_switch_file.exists(),
+            "settings_pending": s.settings_pending_file.exists(),  # P3.2: restart-to-apply
             "watchdog": {
                 "health": wd_health,
                 "age_s": None if wd_age == float("inf") else round(wd_age, 1),
