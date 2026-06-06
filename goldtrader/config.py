@@ -176,6 +176,14 @@ class Settings(BaseSettings):
     news_rss_urls: str = Field(default="https://www.fxstreet.com/rss/news,https://feeds.marketwatch.com/marketwatch/marketpulse/")
     news_digest_count: int = Field(default=8)
 
+    # ---------- Seasonal sizing bias (V7 — the one lab-validated edge) ----------
+    # Gold's Halloween/winter long-tilt (Nov-Apr) was the only OOS-positive signal found.
+    # Expressed as a size DAMP on off-edge entries (winter shorts, all summer trades) — never
+    # a boost, so it can only reduce risk and never breaches the risk-% ceiling. Composes with
+    # the defensive self-heal scaler. See backtest/seasonal.py for the evidence.
+    seasonal_bias_enabled: bool = Field(default=True)
+    seasonal_offseason_scaler: float = Field(default=0.6)  # size factor for non-winter-long entries
+
     # ---------- Backtest / validation lab (V7 Phase 2) ----------
     backtest_bars: int = Field(default=6000)            # M30 bars to pull (~125 trading days)
     backtest_warmup_bars: int = Field(default=250)      # bars skipped before the first decision

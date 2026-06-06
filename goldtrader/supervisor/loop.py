@@ -32,6 +32,7 @@ from ..risk.manager import RiskManager, _tf, can_pyramid, half_lot, open_risk_mo
 from ..safety import guards
 from ..strategy.bias import BiasProvider, bias_vetoes
 from ..strategy.exits import chandelier_stop, ratchet_stop, should_bias_exit, should_cut_loss
+from ..strategy.seasonal_bias import seasonal_size_scaler
 from ..strategy.technical import TechnicalEngine
 from ..types import Action, OrderIntent, today_iso
 from . import scheduler
@@ -436,10 +437,13 @@ class Supervisor:
                 log.info("add_blocked", reason=reason)
                 return
 
-        # 11. risk sizing (defensive self-heal scaler — only ever reduces size)
+        # 11. risk sizing (defensive self-heal scaler + seasonal bias — both only reduce size)
         intent = OrderIntent(side=side, confidence=tech.score,
                              rationale=rationale, signal_hash=dedup_key)
-        decision = self.risk.evaluate(intent, risk_scaler=defensive.risk_mult)
+        season_mult, season_reason = seasonal_size_scaler(datetime.now(timezone.utc), side, s)
+        if season_mult < 1.0:
+            log.info("seasonal_bias", side=side.value, scaler=season_mult, reason=season_reason)
+        decision = self.risk.evaluate(intent, risk_scaler=defensive.risk_mult * season_mult)
         if not decision.approved:
             log.info("risk_rejected", reason=decision.reason)
             self.state.last_signal_hash = dedup_key
