@@ -38,6 +38,12 @@ TUNABLE_BOUNDS = {
     "ema_fast": (5.0, 30.0),
     "ema_slow": (30.0, 100.0),
     "cot_extreme_z": (0.5, 2.0),  # COT positioning gate threshold (P3.2 preset uses 1.0)
+    # Sizing-overlay strengths (V7 ensemble). TIGHT rails: the self-learning loop may tune how
+    # HARD each overlay damps, but the bounds keep them as real damps — it can never set them to
+    # 1.0 to silently disable a drawdown control (the classic ensemble-destruction failure mode).
+    "seasonal_offseason_scaler": (0.4, 0.9),
+    "tsmom_downtrend_scaler": (0.2, 0.9),
+    "vol_target_annual": (0.10, 0.30),
 }
 
 
