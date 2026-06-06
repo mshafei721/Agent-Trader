@@ -101,7 +101,11 @@ def regime_position(df: pd.DataFrame, *, lookback: int = 20, regime_window: int 
     pos[(d_real < 0) & (d_usd < 0)] = 1
     pos[(d_real > 0) & (d_usd > 0)] = -1
     if use_regime:
-        corr = df["gold_ret"].rolling(regime_window).corr(d_real)
+        # Regime = the normal inverse gold/real-yield link is active. Correlate at the SAME
+        # (daily) frequency — gold daily returns vs real-yield DAILY changes — so the rolling
+        # corr is meaningful (correlating returns with the smooth 20-day change is degenerate).
+        daily_dreal = df["real"].diff()
+        corr = df["gold_ret"].rolling(regime_window).corr(daily_dreal)
         pos = pos.where(corr < regime_thr, 0)
     return pos.fillna(0).astype(int)
 
