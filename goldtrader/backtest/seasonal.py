@@ -145,6 +145,40 @@ def turn_of_month_trades(daily: pd.DataFrame, s: Settings,
     return tom, rest
 
 
+# ---------------- single-month seasonality (diversifier candidates) ----------------
+def month_long_trades(daily: pd.DataFrame, s: Settings, month: int) -> list[SeasonTrade]:
+    """Long a single calendar `month` each year (first trading day -> last trading day), net of
+    cost. One trade per year. (Research: gold's September long is Baur's 2nd calendar anomaly.)"""
+    idx, close = daily.index, daily["close"]
+    out = []
+    for y in range(int(idx[0].year), int(idx[-1].year) + 1):
+        start = pd.Timestamp(y, month, 1, tz="UTC")
+        nxt = pd.Timestamp(y + 1, 1, 1, tz="UTC") if month == 12 else pd.Timestamp(y, month + 1, 1, tz="UTC")
+        t = _window_trade(idx, close, s, start, nxt - pd.Timedelta(seconds=1), f"{month:02d}-{y}")
+        if t:
+            out.append(t)
+    return out
+
+
+def month_excess_trades(daily: pd.DataFrame, month: int) -> list[SeasonTrade]:
+    """Per year: that month's return MINUS the year's average monthly return — isolates the
+    SEASONAL excess from the secular drift (the decisive 'is it real seasonality?' control).
+    Uses month-end closes; no cost (this measures the anomaly, not tradeability)."""
+    m = daily["close"].resample("ME").last().dropna()
+    rets = m.pct_change().dropna()
+    by_year: dict[int, dict[int, float]] = {}
+    for ts, r in rets.items():
+        by_year.setdefault(ts.year, {})[ts.month] = float(r)
+    out = []
+    for y, mr in sorted(by_year.items()):
+        if month not in mr or len(mr) < 6:   # need a representative year
+            continue
+        year_avg = sum(mr.values()) / len(mr)
+        out.append(SeasonTrade(f"{y}-{month:02d}", f"{y}-{month:02d}", mr[month] - year_avg,
+                               f"{month:02d} {y} excess"))
+    return out
+
+
 # ---------------- out-of-sample split ----------------
 def split(trades: list[SeasonTrade], frac: float = 0.5) -> tuple[list[SeasonTrade], list[SeasonTrade]]:
     """Chronological in-sample / out-of-sample split (trades arrive in date order)."""

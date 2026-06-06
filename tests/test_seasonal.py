@@ -64,6 +64,27 @@ def test_no_lookahead_entry_before_exit():
         assert t.entry_date < t.exit_date
 
 
+def test_month_long_trades_one_per_year():
+    s = _no_cost()
+    dates = pd.date_range("2019-01-01", "2021-12-31", freq="D")
+    daily = _daily([d.strftime("%Y-%m-%d") for d in dates], [100.0 + i for i in range(len(dates))])
+    sep = seasonal.month_long_trades(daily, s, 9)
+    assert len(sep) == 3                       # 2019, 2020, 2021
+    assert sep[0].entry_date == "2019-09-01"   # first trading day of September
+    assert sep[0].exit_date == "2019-09-30"    # last trading day of September
+    assert all(t.ret > 0 for t in sep)         # rising series
+
+
+def test_month_excess_subtracts_year_drift():
+    # rising series -> every month positive; the December excess should be small (near the avg)
+    dates = pd.date_range("2018-01-01", "2021-12-31", freq="D")
+    daily = _daily([d.strftime("%Y-%m-%d") for d in dates], [100.0 + i for i in range(len(dates))])
+    ex = seasonal.month_excess_trades(daily, 9)
+    assert ex and all(t.label.endswith("excess") for t in ex)
+    # excess is a deviation from the yearly mean -> can be either sign, bounded small
+    assert all(abs(t.ret) < 0.5 for t in ex)
+
+
 def test_split_is_chronological_half():
     trades = [seasonal.SeasonTrade(f"d{i}", f"d{i}b", 0.0, str(i)) for i in range(10)]
     a, b = seasonal.split(trades)

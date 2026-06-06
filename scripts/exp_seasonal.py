@@ -73,6 +73,18 @@ def main() -> None:
     t_oos, _ = line("winter OUT-SAMPLE", wi_oos, seed); emit("  " + t_oos)
     emit("")
 
+    # ---- September (Baur's 2nd anomaly; outside the winter window -> diversifier) ----
+    emit("## September long (diversifier candidate, outside the Nov-Apr winter window)")
+    sep = seasonal.month_long_trades(daily, s, 9)
+    st, _ = line("September long (raw)", sep, seed); emit("  " + st)
+    sx, _ = line("September EXCESS vs avg month", seasonal.month_excess_trades(daily, 9), seed); emit("  " + sx)
+    se_is, se_oos = seasonal.split(sep)
+    t1, _ = line("September IN-SAMPLE", se_is, seed); emit("  " + t1)
+    t2, _ = line("September OUT-SAMPLE", se_oos, seed); emit("  " + t2)
+    # November as a reference (it's inside winter; should also be strong per Baur)
+    nx, _ = line("November EXCESS vs avg month", seasonal.month_excess_trades(daily, 11), seed); emit("  " + nx)
+    emit("")
+
     # ---- turn of month ----
     tom, rest = seasonal.turn_of_month_trades(daily, s)
     emit("## Turn-of-month [-1,+3] vs rest-of-month")
