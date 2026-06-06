@@ -224,6 +224,92 @@
   @keyframes flash { 0% { box-shadow: 0 0 0 1px var(--accent) inset, 0 0 22px oklch(0.575 0.215 278 / 0.28); } 100% { box-shadow: var(--shadow); } }
   .flash { animation: flash 1.5s ease-out; }
 
+  /* ---------- mode banner (live vs paper) ---------- */
+  .banner { display: flex; align-items: center; justify-content: center; gap: 12px;
+    padding: 9px 20px; font-size: 13px; font-weight: 650; letter-spacing: 0.2px;
+    border-bottom: 1px solid var(--border); }
+  .banner .b-dot { width: 9px; height: 9px; border-radius: 50%; background: currentColor; }
+  .banner .b-sub { font-weight: 500; opacity: 0.85; }
+  .banner.paper { color: var(--info); background: oklch(0.575 0.19 268 / 0.10); border-color: oklch(0.575 0.19 268 / 0.30); }
+  .banner.live  { color: oklch(0.99 0.02 18); background: var(--neg); border-color: var(--neg); }
+  .banner.live .b-dot { animation: breathe 1.4s ease-in-out infinite; }
+  .banner.unknown { color: var(--muted); background: var(--surface-2); }
+
+  /* ---------- safety traffic lights ---------- */
+  .lights { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--border); }
+  .light { background: var(--surface); padding: 14px 16px; display: flex; gap: 12px; align-items: flex-start; }
+  .light .dot { width: 13px; height: 13px; border-radius: 50%; margin-top: 2px; flex: none; background: var(--surface-3); box-shadow: 0 0 0 3px var(--surface-3); }
+  .light.green  .dot { background: var(--pos); box-shadow: 0 0 0 3px oklch(0.585 0.15 150 / 0.18); }
+  .light.amber  .dot { background: var(--warn); box-shadow: 0 0 0 3px oklch(0.68 0.15 65 / 0.18); }
+  .light.red    .dot { background: var(--neg); box-shadow: 0 0 0 3px oklch(0.575 0.215 18 / 0.18); animation: breathe 1.6s ease-in-out infinite; }
+  .light.unknown .dot { background: var(--faint); box-shadow: 0 0 0 3px var(--surface-3); }
+  .light .lt { font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.7px; color: var(--faint); }
+  .light .lv { font-size: 15px; font-weight: 600; margin: 2px 0 3px; color: var(--text); }
+  .light .ld { font-size: 11.5px; color: var(--muted); line-height: 1.4; }
+  @media (max-width: 720px) { .lights { grid-template-columns: 1fr; } }
+
+  /* ---------- equity / drawdown chart ---------- */
+  .eq-head { display: flex; gap: 22px; flex-wrap: wrap; padding: 14px 17px 4px; }
+  .eq-stat .k { font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.7px; color: var(--faint); }
+  .eq-stat .v { font-family: var(--mono); font-size: 19px; font-variant-numeric: tabular-nums; letter-spacing: -0.4px; }
+  .eq-wrap { padding: 6px 12px 16px; }
+  .eq-wrap svg { width: 100%; height: 180px; display: block; overflow: visible; }
+  .eq-empty { padding: 22px 17px; }
+
+  /* ---------- modal ---------- */
+  .modal-bg { position: fixed; inset: 0; z-index: 60; background: oklch(0.30 0.04 263 / 0.45); backdrop-filter: blur(3px);
+    display: flex; align-items: center; justify-content: center; padding: 20px; animation: slidein 200ms ease-out; }
+  .modal { background: var(--surface); border: 1px solid var(--border-2); border-radius: var(--r); box-shadow: var(--shadow);
+    max-width: 440px; width: 100%; overflow: hidden; }
+  .modal h3 { margin: 0; padding: 16px 20px; font-size: 15px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 9px; }
+  .modal .m-body { padding: 18px 20px; font-size: 13px; line-height: 1.6; color: var(--text); }
+  .modal .m-body .warn-line { display: flex; gap: 9px; align-items: center; font-weight: 600; margin-bottom: 10px; }
+  .modal .m-body dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 12px 0 0; }
+  .modal .m-body dt { color: var(--muted); } .modal .m-body dd { margin: 0; font-family: var(--mono); text-align: right; }
+  .modal .m-foot { display: flex; gap: 10px; justify-content: flex-end; padding: 14px 20px; border-top: 1px solid var(--border); background: oklch(0.985 0.004 264); }
+  .modal .badge-live { color: oklch(0.99 0.02 18); background: var(--neg); padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+  .modal .badge-paper { color: var(--info); background: oklch(0.575 0.19 268 / 0.12); padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+
+  .row .plain { color: var(--text); font-size: 12.5px; }
+  .row.is-plain { grid-template-columns: 62px 1fr; }
+
+  /* ---------- pending-restart bar ---------- */
+  .pending-bar { display: flex; align-items: center; gap: 12px; padding: 9px 20px;
+    font-size: 12.5px; font-weight: 600; color: var(--warn);
+    background: oklch(0.68 0.15 65 / 0.12); border-bottom: 1px solid oklch(0.68 0.15 65 / 0.35); }
+  .pending-bar .b-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; animation: breathe 1.6s ease-in-out infinite; }
+  .pending-bar .sp { flex: 1; }
+  .pending-bar button { font: 600 12px/1 var(--sans); color: oklch(0.99 0.01 65); background: var(--warn);
+    border: none; padding: 7px 13px; border-radius: var(--r-sm); cursor: pointer; }
+  .pending-bar button:hover { filter: brightness(1.05); }
+
+  /* ---------- settings / presets ---------- */
+  .presets { display: flex; gap: 9px; flex-wrap: wrap; padding: 14px 17px 4px; }
+  .preset-btn { flex: 1; min-width: 150px; text-align: left; cursor: pointer; background: var(--surface);
+    border: 1px solid var(--border-2); border-radius: var(--r-sm); padding: 11px 13px; box-shadow: var(--shadow-sm);
+    transition: border-color 140ms, box-shadow 140ms, background 140ms; }
+  .preset-btn:hover { border-color: var(--accent); box-shadow: var(--shadow); }
+  .preset-btn b { font-size: 13px; color: var(--text); } .preset-btn span { display: block; font-size: 11px; color: var(--muted); margin-top: 3px; line-height: 1.4; }
+  .settings-note { padding: 4px 17px 0; font-size: 11.5px; color: var(--muted); line-height: 1.5; }
+  .settings-note b { color: var(--text); }
+  .settings-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px 16px; padding: 14px 17px; }
+  @media (max-width: 820px) { .settings-grid { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 560px) { .settings-grid { grid-template-columns: 1fr; } }
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  .field label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--faint); }
+  .field .frow { display: flex; align-items: baseline; gap: 7px; }
+  .field input { width: 78px; font: 500 13px var(--mono); padding: 6px 8px; border: 1px solid var(--border-2);
+    border-radius: var(--r-sm); background: var(--surface); color: var(--text); }
+  .field input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .field input.dirty { border-color: var(--accent); background: oklch(0.575 0.215 278 / 0.06); }
+  .field .rng { font-size: 10px; color: var(--faint); font-family: var(--mono); }
+  .settings-foot { display: flex; align-items: center; gap: 12px; padding: 6px 17px 16px; }
+  .settings-foot .sp { flex: 1; }
+  .diff-list { margin: 12px 0 0; display: grid; grid-template-columns: auto auto 1fr; gap: 5px 12px; font-size: 12.5px; }
+  .diff-list code { font-family: var(--mono); color: var(--accent); }
+  .diff-list .arrow { color: var(--faint); } .diff-list .to { font-family: var(--mono); font-weight: 600; }
+  .diff-list .clamp { color: var(--warn); font-size: 11px; }
+
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
   }
@@ -256,12 +342,35 @@
   </div>
   <div class="tsep"></div>
   <div class="tgroup">
-    <button class="act danger" data-act="stop" data-confirm="1">Stop supervisor</button>
-    <button class="act danger" data-act="restart" data-confirm="1">Restart</button>
+    <button class="act danger" data-act="supervisor/stop" data-confirm="1">Stop supervisor</button>
+    <button class="act danger" data-act="supervisor/restart" data-confirm="1">Restart</button>
   </div>
 </div>
 
+<div class="banner unknown" id="banner"><span class="b-dot"></span><span id="banner-text">checking mode…</span></div>
+<div class="pending-bar" id="pending-bar" hidden><span class="b-dot"></span><span class="sp" id="pending-text">Settings changed — restart to apply.</span><button id="pending-restart">Restart to apply</button></div>
+
 <main>
+  <section class="panel" id="safety-panel">
+    <h2>Safety status <span class="tag muted">at a glance</span></h2>
+    <div class="lights" id="lights">
+      <div class="light unknown" id="light-bot"><div class="dot"></div><div><div class="lt">Bot</div><div class="lv">·</div><div class="ld">loading…</div></div></div>
+      <div class="light unknown" id="light-mode"><div class="dot"></div><div><div class="lt">Mode</div><div class="lv">·</div><div class="ld">loading…</div></div></div>
+      <div class="light unknown" id="light-guard"><div class="dot"></div><div><div class="lt">Loss guard</div><div class="lv">·</div><div class="ld">loading…</div></div></div>
+    </div>
+  </section>
+
+  <section class="panel" id="equity-panel">
+    <h2>Track record <span class="tag muted" id="eq-trades">equity &amp; drawdown</span></h2>
+    <div class="eq-head">
+      <div class="eq-stat" title="Total result across every closed trade, in R (multiples of the amount risked per trade)."><div class="k">Net R</div><div class="v num" id="eq-netr">·</div></div>
+      <div class="eq-stat" title="Total realized profit/loss across all closed trades, in account currency."><div class="k">Net PnL</div><div class="v num" id="eq-netpnl">·</div></div>
+      <div class="eq-stat" title="Largest peak-to-trough drop the account has ever been through — the worst losing run so far."><div class="k">Max drawdown</div><div class="v num" id="eq-maxdd">·</div></div>
+      <div class="eq-stat" title="How far below the all-time peak the account is right now (0 means at a new high)."><div class="k">Current drawdown</div><div class="v num" id="eq-curdd">·</div></div>
+    </div>
+    <div class="eq-wrap" id="eq-wrap"><span class="empty eq-empty">No closed trades yet — the track record builds as trades close.</span></div>
+  </section>
+
   <section class="panel" id="bias-panel">
     <h2>LLM macro bias <span class="tag updated" id="bias-age"></span></h2>
     <div class="body" id="bias-body"><span class="empty">loading…</span></div>
@@ -292,12 +401,25 @@
   <section class="panel">
     <h2>Performance <span class="tag muted" id="perf-window"></span></h2>
     <div class="kpis">
-      <div class="kpi"><div class="k">Trades</div><div class="v" id="k-trades">·</div></div>
-      <div class="kpi"><div class="k">Win rate</div><div class="v" id="k-win">·</div></div>
-      <div class="kpi"><div class="k">Avg R</div><div class="v" id="k-avgr">·</div></div>
-      <div class="kpi"><div class="k">Net PnL</div><div class="v" id="k-net">·</div></div>
+      <div class="kpi" title="Number of closed trades in this window."><div class="k">Trades</div><div class="v" id="k-trades">·</div></div>
+      <div class="kpi" title="Share of closed trades that ended in profit."><div class="k">Win rate</div><div class="v" id="k-win">·</div></div>
+      <div class="kpi" title="Average result per trade, measured in R — multiples of the amount risked. +1R means a trade made what it risked. Above 0 over many trades is the goal."><div class="k">Avg R</div><div class="v" id="k-avgr">·</div></div>
+      <div class="kpi" title="Total realized profit/loss in account currency for this window."><div class="k">Net PnL</div><div class="v" id="k-net">·</div></div>
     </div>
     <div class="body" id="trades-body"><span class="empty">loading…</span></div>
+  </section>
+
+  <section class="panel" id="settings-panel">
+    <h2>Settings &amp; risk presets <span class="tag muted" id="settings-auth"></span></h2>
+    <div class="settings-note">These change <b>trade frequency and drawdown posture</b> — not proven profitability (the 5-year lab found no setting that creates a real edge). The hard floor (risk %, loss caps, demo guard) is <b>never</b> editable here. Changes apply on the next restart.</div>
+    <div class="presets" id="presets"></div>
+    <div class="settings-grid" id="settings-grid"><span class="empty" style="padding:8px 0">loading…</span></div>
+    <div class="settings-foot">
+      <span class="muted faint" id="settings-status"></span>
+      <span class="sp"></span>
+      <button class="act" id="settings-reset" disabled>Reset</button>
+      <button class="act gold" id="settings-save" disabled>Save changes</button>
+    </div>
   </section>
 
   <section class="panel" id="logwrap">
@@ -307,6 +429,7 @@
       <span class="chip" data-lvl="warning">warn</span>
       <span class="chip" data-lvl="error">error</span>
       <div class="log-spacer"></div>
+      <span class="chip" id="plain-chip" title="Translate events into plain English">plain English</span>
       <span class="chip on" id="autoscroll-chip">auto-scroll</span>
       <span class="chip" id="clear">clear</span>
     </div>
@@ -315,6 +438,7 @@
 </main>
 
 <div id="toasts"></div>
+<div id="modal-root"></div>
 
 <script>
 (() => {
@@ -362,9 +486,8 @@
       if (s.symbol) $("symbol").textContent = s.symbol;
       const [hc, hl] = healthMap[s.health] || healthMap.unknown;
       setPill("health", hc, hl);
-      if (s.dry_run === false) setPill("mode", "live", "LIVE");
-      else if (s.dry_run === true) setPill("mode", "dry", "dry-run");
-      else setPill("mode", "idle", "mode ?");
+      renderMode(s);
+      renderPending(!!s.settings_pending);
       setPill("kill", s.kill_switch ? "bad" : "up", s.kill_switch ? "kill: ON" : "kill: off");
       const w = s.watchdog || {};
       const wc = w.health === "up" ? "up" : w.health === "down" ? "idle" : "lag";
@@ -374,7 +497,8 @@
       const kb = $("btn-kill");
       kb.dataset.killon = s.kill_switch ? "off" : "on";
       kb.textContent = s.kill_switch ? "Resume (clear kill)" : "Kill switch";
-      $("btn-runonce").title = s.dry_run === false ? "LIVE account: can place a real order" : "";
+      $("btn-runonce").title = (LAST_MODE && LAST_MODE.real === true) ? "REAL-money account: can place a real order"
+        : (LAST_MODE && LAST_MODE.places) ? "Can place a real order on the demo account" : "";
     } catch (e) { setPill("health", "bad", "offline"); }
   }
   function setPill(id, cls, text) {
@@ -436,13 +560,94 @@
     $("hbage").textContent = ago(hbAge + (Date.now() / 1000 - hbAt));
   }
 
+  // ---------- mode (3 honest states: dry-run / demo-live-orders / REAL money) ----------
+  let LAST_BALANCE = null, LAST_MODE = null;
+  function modeInfo(s) {
+    const dry = s.dry_run, tm = s.trade_mode;
+    if (dry === true)
+      return { real: false, places: false, pill: ["dry", "dry-run"], bcls: "paper",
+               head: "PAPER (dry-run) — simulating only", sub: "no orders are sent" };
+    if (dry === false && tm === 2)
+      return { real: true, places: true, pill: ["live", "LIVE $"], bcls: "live",
+               head: "LIVE MONEY — real orders on a real account", sub: "every action can move real funds" };
+    if (dry === false && (tm === 0 || tm === 1))
+      return { real: false, places: true, pill: ["dry", "demo (live)"], bcls: "paper",
+               head: "DEMO — live orders on a demo account", sub: "real execution · no real money" };
+    if (dry === false)
+      return { real: null, places: true, pill: ["lag", "live orders?"], bcls: "unknown",
+               head: "LIVE ORDERS — account type not reported", sub: "treat with caution until confirmed" };
+    return { real: null, places: false, pill: ["idle", "mode ?"], bcls: "unknown",
+             head: "Trading mode unknown — supervisor not reporting", sub: "" };
+  }
+  function renderMode(s) {
+    const m = modeInfo(s); LAST_MODE = m;
+    setPill("mode", m.pill[0], m.pill[1]);
+    const b = $("banner"), t = $("banner-text");
+    b.className = "banner " + m.bcls;
+    t.innerHTML = esc(m.head) + (m.sub ? ` <span class='b-sub'>· ${esc(m.sub)}</span>` : "");
+  }
+
+  // ---------- safety lights ----------
+  async function pollSafety() { try { renderSafety(await api("/api/safety")); } catch (e) {} }
+  function setLight(id, x) {
+    if (!x) return;
+    const el = $(id); el.className = "light " + (x.state || "unknown");
+    el.querySelector(".lv").textContent = x.label || NA;
+    el.querySelector(".ld").textContent = x.detail || "";
+  }
+  function renderSafety(s) {
+    if (!s) return;
+    setLight("light-bot", s.bot); setLight("light-mode", s.mode); setLight("light-guard", s.loss_guard);
+  }
+
+  // ---------- equity / drawdown ----------
+  async function pollEquity() { try { renderEquity(await api("/api/equity")); } catch (e) {} }
+  function renderEquity(e) {
+    if (!e) return;
+    $("eq-netr").textContent = signed(e.net_r, 2); $("eq-netr").className = "v num " + pnlClass(e.net_r);
+    $("eq-netpnl").textContent = signed(e.net_pnl); $("eq-netpnl").className = "v num " + pnlClass(e.net_pnl);
+    $("eq-maxdd").textContent = e.max_drawdown_pnl ? "-" + fmt(e.max_drawdown_pnl) : fmt(0);
+    $("eq-curdd").textContent = e.current_drawdown_pnl ? "-" + fmt(e.current_drawdown_pnl) : fmt(0);
+    $("eq-curdd").className = "v num " + (e.current_drawdown_pnl ? "neg" : "");
+    $("eq-trades").textContent = (e.trades || 0) + " trade" + (e.trades === 1 ? "" : "s");
+    const c = e.curve || [], wrap = $("eq-wrap");
+    if (c.length < 2) { wrap.innerHTML = '<span class="empty eq-empty">No closed trades yet — the track record builds as trades close.</span>'; return; }
+    wrap.innerHTML = equitySVG(c);
+  }
+  function equitySVG(c) {
+    const W = 1000, eqTop = 8, eqBot = 116, uwTop = 130, uwBot = 172;
+    const xs = (i) => (c.length === 1 ? 0 : (i / (c.length - 1)) * W);
+    const pnls = c.map(p => p.pnl), dds = c.map(p => p.dd || 0);
+    let vmin = Math.min(0, ...pnls), vmax = Math.max(0, ...pnls);
+    if (vmin === vmax) { vmax = vmin + 1; }
+    const ey = (v) => eqBot - ((v - vmin) / (vmax - vmin)) * (eqBot - eqTop);
+    const ddmax = Math.max(0, ...dds) || 1;
+    const uy = (d) => uwTop + (d / ddmax) * (uwBot - uwTop);
+    const last = c[c.length - 1].pnl;
+    const lineCol = last > 0 ? "var(--pos)" : last < 0 ? "var(--neg)" : "var(--muted)";
+    const eqPts = c.map((p, i) => `${xs(i).toFixed(1)},${ey(p.pnl).toFixed(1)}`).join(" ");
+    const areaPath = `M0,${ey(0).toFixed(1)} L` + c.map((p, i) => `${xs(i).toFixed(1)},${ey(p.pnl).toFixed(1)}`).join(" L") + ` L${W},${ey(0).toFixed(1)} Z`;
+    const uwPath = `M0,${uwTop} L` + c.map((p, i) => `${xs(i).toFixed(1)},${uy(p.dd || 0).toFixed(1)}`).join(" L") + ` L${W},${uwTop} Z`;
+    const zeroY = ey(0).toFixed(1);
+    return `<svg viewBox="0 0 ${W} 180" preserveAspectRatio="none" role="img" aria-label="Equity and drawdown curve">
+      <defs><linearGradient id="eqfill" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="${lineCol}" stop-opacity="0.18"/><stop offset="1" stop-color="${lineCol}" stop-opacity="0.01"/></linearGradient></defs>
+      <line x1="0" y1="${zeroY}" x2="${W}" y2="${zeroY}" stroke="var(--border-2)" stroke-width="1" stroke-dasharray="4 5"/>
+      <path d="${areaPath}" fill="url(#eqfill)"/>
+      <polyline points="${eqPts}" fill="none" stroke="${lineCol}" stroke-width="2" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
+      <line x1="0" y1="${uwTop}" x2="${W}" y2="${uwTop}" stroke="var(--border)" stroke-width="1"/>
+      <path d="${uwPath}" fill="var(--neg)" fill-opacity="0.16" stroke="var(--neg)" stroke-opacity="0.5" stroke-width="1" vector-effect="non-scaling-stroke"/>
+      <text x="6" y="${uwTop - 4}" font-size="9" fill="var(--faint)">underwater (drawdown)</text>
+    </svg>`;
+  }
+
   // ---------- positions ----------
   async function pollPositions() {
     try {
       const p = await api("/api/positions");
       openPosCount = p.available ? (p.positions ? p.positions.length : 0) : null;
       renderLoops();
-      if (p.balance !== undefined) $("balance").textContent = fmt(p.balance);
+      if (p.balance !== undefined) { LAST_BALANCE = p.balance; $("balance").textContent = fmt(p.balance); }
       if (p.equity !== undefined) $("equity").textContent = fmt(p.equity);
       const fl = $("floating");
       if (p.floating_pnl !== undefined) { fl.textContent = signed(p.floating_pnl); fl.className = "v num " + pnlClass(p.floating_pnl); }
@@ -540,10 +745,12 @@
   }
 
   // ---------- actions ----------
-  const ACT_LABEL = { "kill": "Kill switch", "stop": "Stop supervisor", "restart": "Restart", "bias/refresh": "Refresh bias", "reflect": "Run reflection", "run-once": "Run once" };
-  $("toolbar").addEventListener("click", async (e) => {
+  const ACT_LABEL = { "kill": "Kill switch", "supervisor/stop": "Stop supervisor", "supervisor/restart": "Restart", "bias/refresh": "Refresh bias", "reflect": "Run reflection", "run-once": "Run once" };
+  $("toolbar").addEventListener("click", (e) => {
     const btn = e.target.closest("button.act"); if (!btn) return;
-    let act = btn.dataset.act;
+    const act = btn.dataset.act;
+    // Run-once can place a REAL order on a live account -> always a money-grade modal.
+    if (act === "run-once") { if (btn._reset) btn._reset(); confirmRunOnce(btn); return; }
     if (btn.dataset.confirm === "1" && !btn.classList.contains("confirm")) {
       const orig = btn.textContent;
       btn.classList.add("confirm"); btn.textContent = "Confirm?";
@@ -553,11 +760,13 @@
       return;
     }
     if (btn._reset) btn._reset();
+    performAction(act, btn);
+  });
 
+  async function performAction(act, btn) {
     let path, body = null;
     if (act === "kill") { path = "/api/actions/kill"; body = { on: btn.dataset.killon === "on" }; }
     else path = "/api/actions/" + act;
-
     btn.disabled = true;
     try {
       const res = await api(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : null });
@@ -567,7 +776,51 @@
       setTimeout(() => { pollStatus(); pollBias(); pollReflections(); }, 800);
     } catch (err) { toast((ACT_LABEL[act] || act) + " failed: " + err.message, "err"); }
     finally { setTimeout(() => { btn.disabled = false; }, 600); }
-  });
+  }
+
+  // ---------- money-grade confirmation modal ----------
+  function showModal(html) {
+    const root = $("modal-root");
+    root.innerHTML = `<div class="modal-bg" id="modal-bg"><div class="modal">${html}</div></div>`;
+    $("modal-bg").addEventListener("click", (e) => { if (e.target.id === "modal-bg") closeModal(); });
+    document.addEventListener("keydown", _escClose);
+  }
+  function _escClose(e) { if (e.key === "Escape") closeModal(); }
+  function closeModal() { $("modal-root").innerHTML = ""; document.removeEventListener("keydown", _escClose); }
+
+  function confirmRunOnce(btn) {
+    const m = LAST_MODE || {};
+    const places = m.places !== false, real = m.real === true;
+    const risk = CONFIG.risk_pct_per_trade, bal = LAST_BALANCE;
+    const exposure = (risk && bal) ? (bal * risk / 100) : null;
+    let badge, warn, goLabel, goCls;
+    if (!places) {
+      badge = '<span class="badge-paper">DRY-RUN</span>';
+      warn = `<div class="warn-line muted">Dry-run: this evaluates the strategy but <b>&nbsp;sends no order&nbsp;</b>.</div>`;
+      goLabel = "Run once"; goCls = "gold";
+    } else if (real) {
+      badge = '<span class="badge-live">LIVE MONEY</span>';
+      warn = `<div class="warn-line neg">This can place a <b>&nbsp;real order with real money&nbsp;</b> right now.</div>`;
+      goLabel = "Yes — run on LIVE money"; goCls = "confirm";
+    } else {
+      badge = '<span class="badge-paper">DEMO</span>';
+      warn = `<div class="warn-line muted">This can place a <b>&nbsp;real order on your demo account&nbsp;</b> — no real money.</div>`;
+      goLabel = "Run once (demo)"; goCls = "gold";
+    }
+    const dl = `<dl>
+      <dt>Mode</dt><dd>${badge}</dd>
+      <dt>Risk per trade</dt><dd>${risk !== undefined ? risk + "%" : NA}</dd>
+      ${(places && exposure !== null) ? `<dt>Est. risked if it trades</dt><dd>~${fmt(exposure)}</dd>` : ""}
+      ${(bal !== null && bal !== undefined) ? `<dt>Account balance</dt><dd>${fmt(bal)}</dd>` : ""}
+    </dl>`;
+    showModal(
+      `<h3>Run one tick now</h3>
+       <div class="m-body">${warn}It evaluates the strategy immediately and may <b>open</b> or manage a position.${dl}</div>
+       <div class="m-foot"><button class="act" id="m-cancel">Cancel</button>
+         <button class="act ${goCls}" id="m-go">${goLabel}</button></div>`);
+    $("m-cancel").addEventListener("click", closeModal);
+    $("m-go").addEventListener("click", () => { closeModal(); performAction("run-once", btn); });
+  }
 
   function flash(id) { const e = $(id); e.classList.remove("flash"); void e.offsetWidth; e.classList.add("flash"); }
 
@@ -608,10 +861,109 @@
     setTimeout(poll, 3000);
   }
 
+  // ---------- settings & presets (P3.2) ----------
+  const SET_LABEL = {
+    adx_min_trend: "Trend strength floor (ADX)", atr_sl_mult: "Stop distance (×ATR)",
+    atr_tp_mult: "Target distance (×ATR)", trail_atr_mult: "Trailing stop (×ATR)",
+    breakeven_at_r: "Breakeven at (R)", cut_loss_at_r: "Early-cut threshold (R)",
+    partial_tp_r: "Scale-out at (R)", bias_veto_conviction: "LLM veto conviction",
+    bias_exit_conviction: "LLM exit conviction", min_conviction: "Min conviction",
+    ema_fast: "Fast EMA", ema_slow: "Slow EMA", cot_extreme_z: "COT extreme gate (z)",
+  };
+  let SET_BASE = {};   // param -> baseline value (on-disk)
+  function renderPending(on) { const bar = $("pending-bar"); if (bar) bar.hidden = !on; }
+  async function loadSettings() {
+    let d; try { d = await api("/api/settings"); } catch (e) { return; }
+    SET_BASE = {};
+    const grid = $("settings-grid"), params = d.params || {};
+    grid.innerHTML = Object.keys(params).map(p => {
+      const f = params[p]; SET_BASE[p] = f.value;
+      const step = (f.max - f.min) <= 5 ? "0.1" : "1";
+      return `<div class="field"><label title="${esc(p)}">${esc(SET_LABEL[p] || p)}</label>
+        <div class="frow"><input type="number" id="set-${esc(p)}" data-p="${esc(p)}" value="${f.value}"
+          min="${f.min}" max="${f.max}" step="${step}"><span class="rng">${f.min}–${f.max}</span></div></div>`;
+    }).join("");
+    grid.querySelectorAll("input").forEach(inp => inp.addEventListener("input", onSettingChange));
+    renderPresets(d.presets || {});
+    $("settings-auth").textContent = (CONFIG.auth_required ? "token required" : "");
+    updateSettingsDirty();
+  }
+  function renderPresets(presets) {
+    $("presets").innerHTML = Object.keys(presets).map(k => {
+      const pr = presets[k];
+      return `<div class="preset-btn" data-preset="${esc(k)}" title="${esc(Object.entries(pr.values).map(([a, b]) => a + '=' + b).join(', '))}"><b>${esc(pr.label)}</b><span>${esc(pr.note)}</span></div>`;
+    }).join("");
+    $("presets").querySelectorAll(".preset-btn").forEach(b => b.addEventListener("click", () => confirmPreset(b.dataset.preset, presets[b.dataset.preset])));
+  }
+  function onSettingChange(e) {
+    const inp = e.target;
+    inp.classList.toggle("dirty", parseFloat(inp.value) !== SET_BASE[inp.dataset.p]);
+    updateSettingsDirty();
+  }
+  function changedSettings() {
+    const out = {};
+    document.querySelectorAll("#settings-grid input").forEach(inp => {
+      const p = inp.dataset.p, v = parseFloat(inp.value);
+      if (!Number.isNaN(v) && v !== SET_BASE[p]) out[p] = v;
+    });
+    return out;
+  }
+  function updateSettingsDirty() {
+    const n = Object.keys(changedSettings()).length;
+    $("settings-save").disabled = n === 0; $("settings-reset").disabled = n === 0;
+    $("settings-status").textContent = n ? n + " unsaved change" + (n === 1 ? "" : "s") : "";
+  }
+  function clampNote(p, v) {
+    const f = document.getElementById("set-" + p); if (!f) return "";
+    const lo = parseFloat(f.min), hi = parseFloat(f.max);
+    if (v < lo) return ` (clamps to ${lo})`;
+    if (v > hi) return ` (clamps to ${hi})`;
+    return "";
+  }
+  function diffRows(updates) {
+    return Object.keys(updates).map(p =>
+      `<code>${esc(SET_LABEL[p] || p)}</code><span class="arrow">${SET_BASE[p]} →</span>` +
+      `<span class="to">${updates[p]}<span class="clamp">${clampNote(p, updates[p])}</span></span>`).join("");
+  }
+  function confirmSave() {
+    const updates = changedSettings();
+    if (!Object.keys(updates).length) return;
+    showModal(`<h3>Save settings</h3>
+      <div class="m-body">Write these to <code>.env</code> (a backup is kept). The bot keeps its current config until you restart.
+      <div class="diff-list">${diffRows(updates)}</div></div>
+      <div class="m-foot"><button class="act" id="m-cancel">Cancel</button><button class="act gold" id="m-go">Save (restart later)</button></div>`);
+    $("m-cancel").addEventListener("click", closeModal);
+    $("m-go").addEventListener("click", () => { closeModal(); postSettings({ updates }); });
+  }
+  function confirmPreset(key, pr) {
+    if (!pr) return;
+    const rows = Object.keys(pr.values).map(p =>
+      `<code>${esc(SET_LABEL[p] || p)}</code><span class="arrow">${SET_BASE[p] !== undefined ? SET_BASE[p] + " →" : "→"}</span><span class="to">${pr.values[p]}</span>`).join("");
+    showModal(`<h3>Apply preset: ${esc(pr.label)}</h3>
+      <div class="m-body">${esc(pr.note)}<div class="diff-list">${rows}</div>
+      <p class="faint" style="margin:12px 0 0">Writes to <code>.env</code> (backup kept). Restart to apply.</p></div>
+      <div class="m-foot"><button class="act" id="m-cancel">Cancel</button><button class="act gold" id="m-go">Apply ${esc(pr.label)}</button></div>`);
+    $("m-cancel").addEventListener("click", closeModal);
+    $("m-go").addEventListener("click", () => { closeModal(); postSettings({ preset: key }); });
+  }
+  async function postSettings(body) {
+    try {
+      const res = await api("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      if (res.ok) {
+        const cl = Object.keys(res.clamped || {}).length;
+        toast("Settings saved" + (cl ? " (" + cl + " clamped to safe range)" : "") + ". Restart to apply.", "ok");
+      } else {
+        toast("Settings: " + (res.message || "no change") + (res.rejected && res.rejected.length ? " — " + res.rejected.length + " rejected" : ""), "err");
+      }
+      await loadSettings(); pollStatus();
+    } catch (err) { toast("Save failed: " + err.message, "err"); }
+  }
+
   // ---------- log stream ----------
   const LOG = $("log"); const MAX_ROWS = 600; let autoscroll = true; let levelFilter = "all";
   $("autoscroll-chip").addEventListener("click", function () { autoscroll = !autoscroll; this.classList.toggle("on", autoscroll); if (autoscroll) LOG.scrollTop = LOG.scrollHeight; });
   $("clear").addEventListener("click", () => { LOG.innerHTML = ""; });
+  $("plain-chip").addEventListener("click", function () { PLAIN = !PLAIN; this.classList.toggle("on", PLAIN); rerenderLog(); });
   document.querySelectorAll(".chip[data-lvl]").forEach(c => c.addEventListener("click", () => {
     document.querySelectorAll(".chip[data-lvl]").forEach(x => x.classList.remove("on"));
     c.classList.add("on"); levelFilter = c.dataset.lvl; applyFilter();
@@ -643,19 +995,91 @@
     if (lvl === "warning") return "cat-warn";
     return "cat-info";
   }
-  function addLog(o) {
-    const lvl = (o.level || "info").toLowerCase();
+  // Plain-English translations of the noisier/important events (toggle in the log toolbar).
+  // Unknown events fall back to the raw key=value view even in plain mode (nothing is hidden).
+  const pct = (x) => (x === undefined || x === null) ? "" : Math.round(x * 100) + "%";
+  const EV_PHRASE = {
+    "ORDER FILLED": o => `Opened a ${o.side || ""} trade${o.lots ? ` of ${o.lots} lots` : ""}${o.entry ? ` at ${o.entry}` : ""}.`,
+    "DRY-RUN signal": o => `Paper signal: would open ${o.side || "a position"}${o.entry ? ` at ${o.entry}` : ""} (no real order).`,
+    "DRY_RUN_order": o => `Paper signal: would open ${o.side || "a position"} (no real order).`,
+    "ORDER FAILED": o => `Order rejected${o.retcode ? ` (broker code ${o.retcode})` : ""} — no position opened.`,
+    "position closed": o => `Closed a position${o.reason ? ` (${o.reason})` : ""}.`,
+    "close_position": o => `Closing a position${o.reason ? ` (${o.reason})` : ""}.`,
+    "outcome_recorded": o => `Trade result: ${o.r_multiple !== undefined ? signed(o.r_multiple) + "R" : "recorded"}${o.realized_pnl !== undefined ? ", " + signed(o.realized_pnl) : ""}.`,
+    "scaled_out": o => `Took partial profit — banked half the position.`,
+    "scaled_out_dryrun": o => `Paper: would take partial profit (half off).`,
+    "trail_sl": o => `Tightened the stop to protect profit.`,
+    "early_loss_cut": o => `Cut a losing trade early, before the full stop.`,
+    "early_loss_cut_dryrun": o => `Paper: would cut a losing trade early.`,
+    "bias_exit": o => `Closed a trade — the macro view turned against it.`,
+    "bias_exit_tighten": o => `Tightened a stop — the macro view leans against it.`,
+    "closing_conflicting": o => `Closing a position that conflicts with the new signal.`,
+    "bias_refresh_start": o => `Refreshing the macro view (running the LLM analysis)…`,
+    "bias_refreshed": o => `Updated macro view${o.direction ? `: ${o.direction}${o.conviction !== undefined ? " " + pct(o.conviction) : ""}` : ""}.`,
+    "bias_veto": o => `Blocked a trade — the macro view strongly opposes it.`,
+    "no_trigger": o => `Checked for a setup — none right now.`,
+    "market_closed": o => `Market is closed — waiting.`,
+    "add_blocked": o => `Did not add to the position (pyramiding rules).`,
+    "sizing_overlay": o => { const w = []; if (o.seasonal < 1) w.push("off-season"); if (o.tsmom < 1) w.push("gold downtrend"); if (o.vol < 1) w.push("high volatility"); return `Reduced trade size (×${o.scaler}) — ${w.join(", ") || "risk overlays"}.`; },
+    "risk_rejected": o => `Skipped a trade — risk checks declined it.`,
+    "total_risk_cap": o => `Skipped a trade — already at the open-risk cap.`,
+    "spread_guard_triggered": o => `Skipped entry — the spread is too wide right now.`,
+    "news_blackout": o => `Skipped entry — inside a high-impact news window.`,
+    "session_skip": o => `Skipped entry — outside the main trading hours.`,
+    "weekend_flat": o => `Flattened positions ahead of the weekend.`,
+    "cot_gate": o => `Skipped entry — positioning is at a crowded extreme.`,
+    "bias_unavailable_proceeding": o => `Macro view unavailable — trading on the charts alone.`,
+    "daily_loss_halt": o => `Stopped new trades — hit today's loss limit.`,
+    "defensive_pause": o => `Paused new trades after a losing streak.`,
+    "kill_switch_tripped": o => `Kill switch tripped — trading halted.`,
+    "KILL SWITCH": o => `Kill switch active — trading halted.`,
+    "kill_switch_active": o => `Kill switch is on — idling.`,
+    "reflection_done": o => `Finished a self-review of recent trades.`,
+    "supervisor started": o => `Bot started.`,
+    "supervisor_stopped": o => `Bot stopped.`,
+    "stop_requested": o => `Stop requested.`,
+    "relaunched_supervisor": o => `Watchdog restarted the bot.`,
+    "killed_stale_supervisor": o => `Watchdog killed an unresponsive bot.`,
+    "heartbeat_stale": o => `Bot looked unresponsive — watchdog stepping in.`,
+  };
+  function plainPhrase(o) { const f = EV_PHRASE[o.event]; if (!f) return null; try { return f(o); } catch (e) { return null; } }
+
+  let PLAIN = false;
+  function rowContent(o) {
     const cat = eventCategory(o);
+    const lvl = (o.level || "info").toLowerCase();
     const ts = (o.timestamp || "").slice(11, 19) || (o.timestamp || "");
     const ev = o.event || "event";
-    const kv = Object.keys(o).filter(k => !SKIP.has(k)).map(k => `<b>${esc(k)}</b>=${esc(typeof o[k] === "object" ? JSON.stringify(o[k]) : o[k])}`).join("  ");
+    const shade = cat === "cat-error" ? " is-error" : (cat === "cat-warn" ? " is-warn" : "");
+    const phrase = PLAIN ? plainPhrase(o) : null;
+    let meat, cls;
+    if (phrase) {
+      cls = "row is-plain" + shade;
+      meat = `<span class="ev-badge ${cat}" style="padding:2px 9px">${esc(ev.replace(/_/g, " "))}</span><span class="plain">${esc(phrase)}</span>`;
+    } else {
+      const kv = Object.keys(o).filter(k => !SKIP.has(k)).map(k => `<b>${esc(k)}</b>=${esc(typeof o[k] === "object" ? JSON.stringify(o[k]) : o[k])}`).join("  ");
+      cls = "row" + shade;
+      meat = `<span class="ev-badge ${cat}">${esc(ev)}</span>${kv ? '<span class="kv">' + kv + '</span>' : ''}`;
+    }
+    return { cls, meat, lvl, ts };
+  }
+  function addLog(o) {
+    const c = rowContent(o);
     const row = document.createElement("div");
-    row.className = "row" + (cat === "cat-error" ? " is-error" : (cat === "cat-warn" ? " is-warn" : ""));
-    row.dataset.lvl = lvl;
-    row.innerHTML = `<span class="t">${esc(ts)}</span><span class="meat"><span class="ev-badge ${cat}">${esc(ev)}</span>${kv ? '<span class="kv">' + kv + '</span>' : ''}</span>`;
-    if (levelFilter !== "all" && !matchLvl(lvl)) row.style.display = "none";
+    row.className = c.cls; row.dataset.lvl = c.lvl; row._o = o;
+    row.innerHTML = `<span class="t">${esc(c.ts)}</span><span class="meat">${c.meat}</span>`;
+    if (levelFilter !== "all" && !matchLvl(c.lvl)) row.style.display = "none";
     LOG.appendChild(row);
     while (LOG.childElementCount > MAX_ROWS) LOG.removeChild(LOG.firstChild);
+    if (autoscroll) LOG.scrollTop = LOG.scrollHeight;
+  }
+  function rerenderLog() {
+    LOG.querySelectorAll(".row").forEach(r => {
+      if (!r._o) return;
+      const c = rowContent(r._o);
+      r.className = c.cls; r.innerHTML = `<span class="t">${esc(c.ts)}</span><span class="meat">${c.meat}</span>`;
+      r.style.display = (levelFilter === "all" || matchLvl(c.lvl)) ? "" : "none";
+    });
     if (autoscroll) LOG.scrollTop = LOG.scrollHeight;
   }
   function matchLvl(lvl) { return levelFilter === "all" || (levelFilter === "error" ? (lvl === "error" || lvl === "critical") : lvl === levelFilter); }
@@ -668,12 +1092,26 @@
     es.onerror = () => { es.close(); setTimeout(streamLogs, 3000); };
   }
 
+  // ---------- settings wiring ----------
+  $("settings-save").addEventListener("click", confirmSave);
+  $("settings-reset").addEventListener("click", () => {
+    document.querySelectorAll("#settings-grid input").forEach(inp => { inp.value = SET_BASE[inp.dataset.p]; inp.classList.remove("dirty"); });
+    updateSettingsDirty();
+  });
+  $("pending-restart").addEventListener("click", () => {
+    showModal(`<h3>Restart to apply settings</h3>
+      <div class="m-body">Restart the supervisor so your saved settings take effect. Any open position stays on the broker; trade management resumes right after restart.</div>
+      <div class="m-foot"><button class="act" id="m-cancel">Cancel</button><button class="act confirm" id="m-go">Restart now</button></div>`);
+    $("m-cancel").addEventListener("click", closeModal);
+    $("m-go").addEventListener("click", () => { closeModal(); performAction("supervisor/restart", $("pending-restart")); });
+  });
+
   // ---------- boot ----------
   (async () => {
     try { CONFIG = await api("/api/config"); } catch (e) {}
-    await backfill(); streamLogs();
-    const tick = () => { pollStatus(); pollPositions(); };
-    const slow = () => { pollJournal(); pollBias(); pollReflections(); };
+    await backfill(); streamLogs(); loadSettings();
+    const tick = () => { pollStatus(); pollPositions(); pollSafety(); };
+    const slow = () => { pollJournal(); pollBias(); pollReflections(); pollEquity(); };
     tick(); slow();
     setInterval(tick, 5000);
     setInterval(slow, 20000);

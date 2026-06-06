@@ -1,6 +1,9 @@
 # secrets & local config
 .env
 .env.enterprise
+# dashboard settings-write leaves a backup/temp of .env (contains secrets) — never commit
+.env.bak
+.env.tmp
 
 # venv
 .venv/

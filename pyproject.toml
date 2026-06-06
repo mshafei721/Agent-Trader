@@ -20,6 +20,8 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
+# Backtest lab only (lazily imported). Free multi-year XAU/USD history; no live-trading need.
+backtest = ["dukascopy-python>=4.0"]
 
 [project.scripts]
 goldtrader = "goldtrader.supervisor.loop:main"

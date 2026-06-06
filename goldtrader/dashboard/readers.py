@@ -90,7 +90,9 @@ def read_status(s: Settings) -> dict:
             "pid": hb.get("pid") if hb else None,
             "symbol": hb.get("symbol") if hb else None,
             "dry_run": hb.get("dry_run") if hb else None,
+            "trade_mode": hb.get("trade_mode") if hb else None,  # 0=demo,1=contest,2=real
             "kill_switch": s.kill_switch_file.exists(),
+            "settings_pending": s.settings_pending_file.exists(),  # P3.2: restart-to-apply
             "watchdog": {
                 "health": wd_health,
                 "age_s": None if wd_age == float("inf") else round(wd_age, 1),
@@ -289,6 +291,164 @@ def _performance_summary(rows) -> dict:
         "avg_r": round(sum(rs) / len(rs), 3) if rs else 0.0,
         "net_pnl": round(sum((r["realized_pnl"] or 0) for r in rows), 2),
     }
+
+
+def read_equity(s: Settings, cap: int = 500) -> dict:
+    """Cumulative realized equity + drawdown curve from ALL closed trades (read-only).
+
+    Powers the dashboard equity/drawdown chart. Ordered by insertion id (the order
+    trades were recorded = chronological close order). Returns both the money curve
+    (cumulative realized PnL) and the R-multiple curve, with running drawdown from
+    the peak. Downsampled to `cap` points when there are more (the last point is
+    always kept so the headline figures match)."""
+    conn = None
+    try:
+        conn = _ro_connect(s.journal_db)
+        if conn is None:
+            return {"available": False, "curve": [], "trades": 0}
+        rows = conn.execute(
+            "SELECT realized_pnl, r_multiple FROM outcomes ORDER BY id ASC"
+        ).fetchall()
+        if not rows:
+            return {"available": True, "curve": [], "trades": 0,
+                    "net_pnl": 0.0, "net_r": 0.0,
+                    "max_drawdown_pnl": 0.0, "max_drawdown_r": 0.0, "current_drawdown_pnl": 0.0}
+        cum_pnl = cum_r = 0.0
+        peak_pnl = peak_r = 0.0
+        max_dd_pnl = max_dd_r = 0.0
+        pts = [{"i": 0, "pnl": 0.0, "r": 0.0, "dd": 0.0}]  # baseline
+        for k, r in enumerate(rows, start=1):
+            cum_pnl += (r["realized_pnl"] or 0.0)
+            cum_r += (r["r_multiple"] or 0.0)
+            peak_pnl = max(peak_pnl, cum_pnl)
+            peak_r = max(peak_r, cum_r)
+            dd_pnl = peak_pnl - cum_pnl
+            max_dd_pnl = max(max_dd_pnl, dd_pnl)
+            max_dd_r = max(max_dd_r, peak_r - cum_r)
+            pts.append({"i": k, "pnl": round(cum_pnl, 2), "r": round(cum_r, 3),
+                        "dd": round(dd_pnl, 2)})
+        curve = _downsample(pts, cap)
+        return {
+            "available": True,
+            "trades": len(rows),
+            "net_pnl": round(cum_pnl, 2),
+            "net_r": round(cum_r, 3),
+            "peak_pnl": round(peak_pnl, 2),
+            "max_drawdown_pnl": round(max_dd_pnl, 2),
+            "max_drawdown_r": round(max_dd_r, 3),
+            "current_drawdown_pnl": round(peak_pnl - cum_pnl, 2),
+            "curve": curve,
+        }
+    except Exception as exc:  # noqa: BLE001
+        log.warning("read_equity_failed", error=str(exc))
+        return {"available": False, "error": str(exc), "curve": [], "trades": 0}
+    finally:
+        if conn is not None:
+            conn.close()
+
+
+def _downsample(pts: list[dict], cap: int) -> list[dict]:
+    """Stride-sample to <= cap points, always keeping the first and last."""
+    if len(pts) <= cap:
+        return pts
+    step = len(pts) / cap
+    out = [pts[int(i * step)] for i in range(cap)]
+    if out[-1] is not pts[-1]:
+        out[-1] = pts[-1]
+    return out
+
+
+def _today_realized_pnl(s: Settings) -> tuple[float, int]:
+    """(sum realized_pnl, trade count) for trades closed today (UTC). 0,0 on any error."""
+    conn = None
+    try:
+        conn = _ro_connect(s.journal_db)
+        if conn is None:
+            return 0.0, 0
+        today = datetime.now(timezone.utc).date().isoformat()
+        rows = conn.execute(
+            "SELECT realized_pnl FROM outcomes WHERE substr(close_ts,1,10)=?", (today,)
+        ).fetchall()
+        return round(sum((r["realized_pnl"] or 0.0) for r in rows), 2), len(rows)
+    except Exception:  # noqa: BLE001
+        return 0.0, 0
+    finally:
+        if conn is not None:
+            conn.close()
+
+
+def read_safety(s: Settings) -> dict:
+    """Three plain-English traffic lights: bot health, trading mode, today's loss guard.
+
+    Each light is {state: green|amber|red|unknown, label, detail}. Computed from the
+    same read-only artifacts as the rest of the dashboard — never opens MT5, never
+    raises into the handler."""
+    status = read_status(s)
+    health = status.get("health", "unknown")
+    kill = bool(status.get("kill_switch"))
+    dry = status.get("dry_run")
+    trade_mode = status.get("trade_mode")  # 0=demo,1=contest,2=real,None=unknown
+
+    # --- bot light (liveness + kill switch) ---
+    if kill:
+        bot = {"state": "red", "label": "Halted", "detail": "Kill switch is ON — no new trades."}
+    else:
+        _bot_map = {
+            "up": ("green", "Running", "Supervisor is alive and on schedule."),
+            "lagging": ("amber", "Lagging", "Heartbeat is a little behind — watching."),
+            "stale": ("red", "Stalled", "No recent heartbeat — the bot may be stuck."),
+            "down": ("red", "Stopped", "Supervisor is not running."),
+            "unknown": ("unknown", "Unknown", "No heartbeat yet."),
+        }
+        st, lab, det = _bot_map.get(health, _bot_map["unknown"])
+        bot = {"state": st, "label": lab, "detail": det}
+
+    # --- mode light: three honest states (dry-run / demo-live-orders / REAL money) ---
+    # require_demo (the hard floor) refuses to TRADE a real account, so real money is only
+    # possible when dry_run is off AND the broker reports a real (trade_mode==2) account.
+    if dry is True:
+        mode = {"state": "green", "label": "Paper (dry-run)",
+                "detail": "Simulating only — no orders are sent.", "real_money": False}
+    elif dry is None:
+        mode = {"state": "unknown", "label": "Unknown", "detail": "Mode not reported yet.",
+                "real_money": None}
+    elif trade_mode == 2:  # real account + live orders
+        mode = {"state": "red", "label": "LIVE money",
+                "detail": "Real orders on a REAL-money account.", "real_money": True}
+    elif trade_mode in (0, 1):  # demo / contest account, but orders are live
+        mode = {"state": "green", "label": "Demo (live orders)",
+                "detail": "Placing real orders on a demo account — no real money.",
+                "real_money": False}
+    else:  # dry_run off but the account type wasn't reported -> warn, don't cry wolf
+        mode = {"state": "amber", "label": "Live orders",
+                "detail": "Sending real orders; account type not reported yet.",
+                "real_money": None}
+
+    # --- loss-guard light (today's realized loss vs the daily cap) ---
+    today_pnl, today_n = _today_realized_pnl(s)
+    cap_pct = s.max_daily_loss_pct
+    pos = read_positions(s)
+    balance = pos.get("balance") if pos.get("available") else None
+    guard = {"state": "unknown", "label": "Loss guard",
+             "detail": "No balance snapshot yet.", "today_pnl": today_pnl,
+             "daily_cap_pct": cap_pct}
+    if today_pnl >= 0:
+        guard.update(state="green",
+                     detail=(f"+{today_pnl:.2f} today — no loss." if today_n else "No trades closed today."))
+    elif balance and balance > 0:
+        used_pct = (-today_pnl) / balance * 100.0
+        frac = used_pct / cap_pct if cap_pct > 0 else 0.0
+        state = "green" if frac < 0.5 else ("amber" if frac < 0.9 else "red")
+        guard.update(state=state, used_pct=round(used_pct, 2),
+                     detail=(f"Down {used_pct:.2f}% of {cap_pct:.1f}% daily limit "
+                             f"({today_pnl:.2f})."))
+    else:
+        guard.update(detail=f"Down {today_pnl:.2f} today (cap is {cap_pct:.1f}% of balance).")
+
+    overall = "red" if any(x["state"] == "red" for x in (bot, mode, guard)) else (
+        "amber" if any(x["state"] == "amber" for x in (bot, mode, guard)) else (
+            "unknown" if any(x["state"] == "unknown" for x in (bot, mode, guard)) else "green"))
+    return {"overall": overall, "bot": bot, "mode": mode, "loss_guard": guard}
 
 
 def read_reflections(s: Settings, n: int = 5) -> dict:

@@ -15,8 +15,11 @@ from .parser import parse_signal
 
 log = get_logger("goldtrader.signals")
 
-# Gold has no company fundamentals -> exclude the fundamentals analyst.
-GOLD_ANALYSTS = ["market", "news", "social"]
+# Gold has no company fundamentals -> exclude the fundamentals analyst. The `social`
+# (sentiment) analyst is dropped too: it pulled Reddit/StockTwits — equity-centric and
+# unreliable for an OTC commodity. Gold news/sentiment is instead supplied as injected
+# context (see _build_gold_context) from reliable gold-native feeds.
+GOLD_ANALYSTS = ["market", "news"]
 
 
 def cache_control_dict(ttl: str) -> dict:
@@ -31,6 +34,16 @@ class SignalAdapter:
     def __init__(self, settings: Settings):
         self.s = settings
         self._graph = None  # lazy: importing TradingAgents is heavy
+        # Gold-native context feeds (cheap; load disk caches). Only built when injection is on.
+        self._macro = self._cot = self._news = None
+        if settings.bias_context_injection_enabled:
+            from ..feeds.cot import CotProvider
+            from ..feeds.macro import MacroProvider
+            from ..feeds.news import NewsProvider
+
+            self._macro = MacroProvider(settings)
+            self._cot = CotProvider(settings)
+            self._news = NewsProvider(settings)
 
     def _build_config(self) -> dict:
         from tradingagents.default_config import DEFAULT_CONFIG
@@ -50,6 +63,40 @@ class SignalAdapter:
         cfg["data_cache_dir"] = str(self.s.ta_memory_dir / "cache")
         return cfg
 
+    def _build_gold_context(self) -> str:
+        """Assemble the gold-commodity framing + live macro/COT/news context appended to
+        every agent's instrument context. Each feed degrades independently to nothing."""
+        lines = [
+            "GOLD / COMMODITY CONTEXT — the instrument is GOLD (XAUUSD spot / GC=F futures), "
+            "a commodity and safe-haven asset, NOT a company. Do NOT apply equity frameworks "
+            "(P/E, earnings, sector rotation). Gold is driven primarily by real interest rates, "
+            "the US dollar, central-bank demand, and safe-haven / geopolitical flows.",
+        ]
+        try:
+            macro = self._macro.snapshot() if self._macro else None
+            if macro and macro.summary():
+                lines.append("Macro: " + macro.summary() + ".")
+        except Exception as exc:  # noqa: BLE001
+            log.warning("macro_context_failed", error=str(exc))
+        try:
+            snap = self._cot.snapshot() if self._cot else None
+            if snap:
+                stance = ("crowded long" if snap.zscore > 1.0 else
+                          "crowded short" if snap.zscore < -1.0 else "neutral")
+                lines.append(f"CFTC managed-money net positioning z-score {snap.zscore:+.2f} "
+                             f"({stance}, as of {snap.report_date}).")
+        except Exception as exc:  # noqa: BLE001
+            log.warning("cot_context_failed", error=str(exc))
+        try:
+            digest = self._news.digest() if self._news else ""
+            if digest:
+                lines.append("Recent gold-relevant headlines:\n" + digest)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("news_context_failed", error=str(exc))
+        lines.append("Note: since 2022 the real-yield/gold correlation has weakened; weight "
+                     "central-bank demand and the dollar alongside real yields.")
+        return "\n".join(lines)
+
     def _ensure_graph(self):
         if self._graph is None:
             import os
@@ -65,12 +112,33 @@ class SignalAdapter:
             if key_env and self.s.llm_api_key is not None:
                 os.environ.setdefault(key_env, self.s.llm_api_key.get_secret_value())
             self._enable_prompt_caching()
-            self._graph = TradingAgentsGraph(
+
+            graph_cls = TradingAgentsGraph
+            if self.s.bias_context_injection_enabled:
+                # Subclass override (NOT a library patch) of the documented context seam:
+                # resolve_instrument_context() is called once in _run_graph and reaches every
+                # agent, so appending our gold context anchors the whole graph to real drivers.
+                adapter = self
+
+                class GoldTradingAgentsGraph(TradingAgentsGraph):
+                    def resolve_instrument_context(self, ticker, asset_type="stock"):
+                        base = super().resolve_instrument_context(ticker, asset_type)
+                        try:
+                            extra = adapter._build_gold_context()
+                        except Exception as exc:  # noqa: BLE001
+                            log.warning("gold_context_build_failed", error=str(exc))
+                            extra = ""
+                        return base + ("\n\n" + extra if extra else "")
+
+                graph_cls = GoldTradingAgentsGraph
+
+            self._graph = graph_cls(
                 selected_analysts=GOLD_ANALYSTS,
                 debug=False,
                 config=self._build_config(),
             )
             log.info("trading_graph_built", analysts=GOLD_ANALYSTS,
+                     context_injection=self.s.bias_context_injection_enabled,
                      backend_url=self.s.llm_backend_url)
         return self._graph
 
@@ -112,7 +180,7 @@ class SignalAdapter:
         graph = self._ensure_graph()
         log.info("propagate_start", ticker=self.s.yahoo_ticker, date=run_date)
         try:
-            final_state, decision = graph.propagate(self.s.yahoo_ticker, run_date, asset_type="stock")
+            final_state, decision = graph.propagate(self.s.yahoo_ticker, run_date, asset_type="commodity")
         except Exception as exc:  # noqa: BLE001
             log.error("propagate_failed", error=str(exc))
             raise

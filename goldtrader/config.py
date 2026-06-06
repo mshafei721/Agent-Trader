@@ -138,6 +138,72 @@ class Settings(BaseSettings):
     require_demo: bool = Field(default=True)
     dry_run: bool = Field(default=True)
 
+    # ---------- Live-safety gates (V7 Phase 0) ----------
+    # Spread guard: reject NEW entries when the live spread (broker points) exceeds this.
+    spread_guard_enabled: bool = Field(default=True)
+    max_entry_spread_points: float = Field(default=50.0)
+    # News / economic-calendar blackout around high-impact USD events. FAILS CLOSED:
+    # if the calendar is unavailable, default ET windows (08:30 / 14:00) are blacked out.
+    news_blackout_enabled: bool = Field(default=True)
+    news_blackout_pre_minutes: int = Field(default=30)
+    news_blackout_post_minutes: int = Field(default=15)
+    finnhub_api_key: SecretStr | None = Field(default=None)
+    calendar_refresh_minutes: int = Field(default=60)
+    # Session-time gate: only OPEN new entries during the London-NY overlap (UTC hours).
+    session_filter_enabled: bool = Field(default=True)
+    trading_session_start_utc: int = Field(default=7)
+    trading_session_end_utc: int = Field(default=17)
+    # Weekend flat: close all positions before the Friday close; grace after Sunday reopen.
+    weekend_flat_enabled: bool = Field(default=True)
+    weekend_flat_hour_utc: int = Field(default=20)
+    weekend_flat_minute_utc: int = Field(default=30)
+    monday_grace_minutes: int = Field(default=30)
+    # Absolute lot cap: hard clamp on lot size regardless of equity growth.
+    max_lots_absolute: float = Field(default=1.0)
+
+    # ---------- Gold-native data feeds (V7 Phase 1) ----------
+    # CFTC COT positioning gate: block new entries that chase a crowded managed-money
+    # extreme (block longs when the 52-wk net z-score > +z, shorts when < -z). FAILS OPEN
+    # (a quality filter, not a safety guard) — missing COT data never blocks trading.
+    cot_gate_enabled: bool = Field(default=True)
+    cot_extreme_z: float = Field(default=1.5)
+    cot_contract_code: str = Field(default="088691")  # COMEX gold (CFTC market code)
+    cot_refresh_hours: float = Field(default=24.0)     # weekly data; re-check daily
+    # Bias-input overhaul: inject gold-commodity framing + real-yield/dollar (FRED) + COT
+    # + gold news into the TradingAgents bias prompt. Degrades gracefully if a feed is down.
+    bias_context_injection_enabled: bool = Field(default=True)
+    fred_api_key: SecretStr | None = Field(default=None)  # free key; macro context skipped if unset
+    news_rss_urls: str = Field(default="https://www.fxstreet.com/rss/news,https://feeds.marketwatch.com/marketwatch/marketpulse/")
+    news_digest_count: int = Field(default=8)
+
+    # ---------- Seasonal sizing bias (V7 — the one lab-validated edge) ----------
+    # Gold's Halloween/winter long-tilt (Nov-Apr) was the only OOS-positive signal found.
+    # Expressed as a size DAMP on off-edge entries (winter shorts, all summer trades) — never
+    # a boost, so it can only reduce risk and never breaches the risk-% ceiling. Composes with
+    # the defensive self-heal scaler. See backtest/seasonal.py for the evidence.
+    seasonal_bias_enabled: bool = Field(default=True)
+    seasonal_offseason_scaler: float = Field(default=0.6)  # size factor for non-winter-long entries
+    # TSMOM regime overlay: damp NEW LONGS in a ~12-month gold downtrend (lab: long/flat halves
+    # maxDD 48%->29%). Damp-only; shorts/uptrend longs unaffected.
+    tsmom_regime_enabled: bool = Field(default=True)
+    tsmom_regime_lookback_days: int = Field(default=252)   # ~12 trading months
+    tsmom_downtrend_scaler: float = Field(default=0.5)     # long size factor in a 12mo downtrend
+    # Vol-targeting overlay: damp size when realized annual vol exceeds the target (tail control).
+    vol_target_enabled: bool = Field(default=True)
+    vol_target_annual: float = Field(default=0.18)         # ~gold's normal vol; damp above it
+    vol_lookback_days: int = Field(default=20)
+
+    # ---------- Backtest / validation lab (V7 Phase 2) ----------
+    backtest_bars: int = Field(default=6000)            # M30 bars to pull (~125 trading days)
+    backtest_warmup_bars: int = Field(default=250)      # bars skipped before the first decision
+    backtest_cost_spread_points: float = Field(default=30.0)    # round-trip spread cost (broker points)
+    backtest_cost_slippage_points: float = Field(default=5.0)   # per-side slippage (broker points)
+    backtest_seed: int = Field(default=42)              # bootstrap / Monte-Carlo reproducibility
+    # True = simulate the live management stack (scale-out + Chandelier trail + breakeven +
+    # early-cut); False = raw fixed SL/TP baseline.
+    backtest_model_management: bool = Field(default=True)
+    backtest_dukascopy_years: int = Field(default=5)    # years of XAU/USD M30 to import (free, no key)
+
     # ---------- Notifications ----------
     telegram_bot_token: SecretStr | None = Field(default=None)
     telegram_chat_id: str | None = Field(default=None)
@@ -191,6 +257,40 @@ class Settings(BaseSettings):
         return RUNTIME_DIR / "KILL_SWITCH"
 
     @property
+    def circuit_breaker_file(self) -> Path:
+        # Persisted circuit-breaker state so a crash/relaunch can't reset the failure count.
+        return DATA_DIR / "circuit_breaker.json"
+
+    @property
+    def calendar_cache_file(self) -> Path:
+        # Cached economic-calendar events (resilient across restarts; protects free-tier quota).
+        return DATA_DIR / "calendar_cache.json"
+
+    @property
+    def cot_cache_file(self) -> Path:
+        # Cached CFTC COT snapshot (weekly data; survives restarts).
+        return DATA_DIR / "cot_cache.json"
+
+    @property
+    def backtest_dir(self) -> Path:
+        return DATA_DIR / "backtest"
+
+    @property
+    def settings_pending_file(self) -> Path:
+        # Marks dashboard settings-writes that need a restart to take effect (config is
+        # read once at startup). The supervisor clears this on boot; the dashboard shows
+        # a "restart to apply" banner while it exists.
+        return DATA_DIR / "settings_pending.json"
+
+    @property
+    def macro_cache_file(self) -> Path:
+        return DATA_DIR / "macro_cache.json"
+
+    @property
+    def news_cache_file(self) -> Path:
+        return DATA_DIR / "news_cache.json"
+
+    @property
     def log_file(self) -> Path:
         return LOGS_DIR / "goldtrader.jsonl"
 
@@ -202,6 +302,7 @@ class Settings(BaseSettings):
     @field_validator(
         "mt5_login", "mt5_password", "mt5_server", "mt5_terminal_path",
         "telegram_bot_token", "telegram_chat_id", "llm_api_key", "dashboard_token",
+        "finnhub_api_key", "fred_api_key",
         mode="before",
     )
     @classmethod

@@ -36,6 +36,7 @@ class MT5Client:
         self.symbol: Optional[str] = None
         self.spec: Optional[SymbolSpec] = None
         self._connected = False
+        self.trade_mode: Optional[int] = None  # MT5 account trade_mode: 0=demo,1=contest,2=real
 
     # ---------------- connection ----------------
     @with_backoff(exceptions=(MT5ConnectionError,), max_tries=4, base=2.0, cap=20.0)
@@ -61,6 +62,7 @@ class MT5Client:
 
             # HARD demo guard.
             assert_demo(ai.trade_mode, self.s)
+            self.trade_mode = int(ai.trade_mode)
 
             if not ai.trade_allowed:
                 log.error(
@@ -125,6 +127,15 @@ class MT5Client:
     def tick_age_seconds(self) -> float:
         t = self.get_tick()
         return (datetime.now(timezone.utc).timestamp()) - float(t.time)
+
+    def current_spread_points(self) -> float:
+        """Live bid/ask spread in broker points (ask-bid)/point. Used by the entry spread guard."""
+        spec = self.spec
+        assert spec is not None
+        if spec.point <= 0:
+            return 0.0
+        t = self.get_tick()
+        return (float(t.ask) - float(t.bid)) / spec.point
 
     def get_rates(self, timeframe: int, count: int):
         """Return recent OHLC bars (numpy structured array) for the symbol."""

@@ -8,6 +8,10 @@ Usage (from the venv):
   python -m goldtrader.cli run-once       # run a single supervisor tick (respects DRY_RUN)
   python -m goldtrader.cli reflect        # run the reflection / self-heal report now
   python -m goldtrader.cli status         # show state + defensive mode + journal performance
+  python -m goldtrader.cli backtest-fetch # pull + cache MT5 history for the backtest (needs MT5)
+  python -m goldtrader.cli backtest-import# import years of XAU/USD M30 from Dukascopy (free, no key)
+  python -m goldtrader.cli backtest       # run the offline backtest on cached history (no MT5)
+  python -m goldtrader.cli walkforward    # walk-forward (out-of-sample) parameter validation
   python -m goldtrader.cli kill           # create the kill switch
   python -m goldtrader.cli unkill         # remove the kill switch
 """
@@ -174,6 +178,78 @@ def reflect():
     print(f"report written under {s.reflections_dir}")
 
 
+def backtest_fetch():
+    from .backtest.data import fetch_and_cache
+
+    s = get_settings()
+    print(f"Fetching MT5 history (~{s.backtest_bars} {s.trigger_timeframe} bars)...")
+    summary = fetch_and_cache(s)
+    for tf, info in summary.items():
+        print(f"  tf={tf}: {info['bars']} bars")
+    print(f"Cached under {s.backtest_dir}. Now run: python -m goldtrader.cli backtest")
+
+
+def backtest():
+    import json
+
+    from .backtest.data import load_bars, load_spec
+    from .backtest.engine import run_backtest
+
+    s = get_settings()
+    bars = load_bars(s)
+    spec = load_spec(s)
+    res = run_backtest(s, bars, spec, model_management=s.backtest_model_management)
+    st = res.stats
+    print(f"=== Backtest: {res.label} exits "
+          f"(tp_mult={s.atr_tp_mult} sl_mult={s.atr_sl_mult} adx_min={s.adx_min_trend}) ===")
+    print(f"  trades={st.trades}  win_rate={st.win_rate:.1%} "
+          f"(95% CI {st.win_rate_ci[0]:.1%}-{st.win_rate_ci[1]:.1%})")
+    print(f"  expectancy={st.expectancy:+.3f}R/trade "
+          f"(95% CI {st.expectancy_ci[0]:+.3f}..{st.expectancy_ci[1]:+.3f})")
+    print(f"  profit_factor={st.profit_factor:.2f}  total={st.total_r:+.1f}R")
+    print(f"  max_drawdown={st.max_drawdown_r:.1f}R  max_consec_losses={st.max_consecutive_losses}")
+    print(f"  Sharpe={st.sharpe:+.3f}/trade  Sortino={st.sortino:+.3f}  Calmar={st.calmar:+.2f}")
+    print(f"  Monte-Carlo drawdown: p50={st.mc_drawdown_p50:.1f}R  p95={st.mc_drawdown_p95:.1f}R")
+    if st.trades < 30:
+        print("  EDGE: insufficient sample (need >=30 trades for a meaningful read)")
+    elif st.expectancy_ci[0] > 0:
+        print("  EDGE: POSITIVE — 95% CI excludes zero (after modeled costs)")
+    else:
+        print("  EDGE: NOT proven — expectancy CI includes zero")
+    # Persist the trade log for inspection.
+    out = s.backtest_dir / "last_run.json"
+    out.write_text(json.dumps([t.__dict__ for t in res.trades], indent=2), encoding="utf-8")
+    print(f"  trade log -> {out}")
+
+
+def backtest_import():
+    from .backtest.dukascopy_import import import_history
+
+    s = get_settings()
+    print(f"Importing ~{s.backtest_dukascopy_years}yr XAU/USD M30 from Dukascopy (free, no key)...")
+    summary = import_history(s, years=s.backtest_dukascopy_years)
+    for tf, info in summary.items():
+        print(f"  tf={tf}: {info['bars']} bars")
+    print(f"Cached under {s.backtest_dir}. Run: python -m goldtrader.cli backtest  (or walkforward)")
+
+
+def walkforward():
+    from .backtest.data import load_bars, load_spec
+    from .backtest.walkforward import DEFAULT_GRID, format_report, run_grid, walk_forward
+    from .feeds.cot import historical_zseries
+
+    s = get_settings()
+    bars = load_bars(s)
+    spec = load_spec(s)
+    print(f"Running walk-forward over {len(DEFAULT_GRID)} configs (one backtest each)...")
+    zs = historical_zseries(s, weeks=400) or None  # cover multi-year backtests
+    if not zs:
+        print("  (COT history unavailable — COT-gated configs degrade to no-gate)")
+    grid_trades = run_grid(s, bars, spec, zs, DEFAULT_GRID)
+    wf = walk_forward(grid_trades, n_folds=3, train_frac=0.5, seed=s.backtest_seed)
+    print(format_report(wf, grid_trades, s.backtest_seed))
+
+
 def kill():
     from .safety.guards import trip_kill_switch
 
@@ -198,6 +274,10 @@ _COMMANDS = {
     "run-once": run_once,
     "reflect": reflect,
     "status": status,
+    "backtest-fetch": backtest_fetch,
+    "backtest-import": backtest_import,
+    "backtest": backtest,
+    "walkforward": walkforward,
     "kill": kill,
     "unkill": unkill,
 }
