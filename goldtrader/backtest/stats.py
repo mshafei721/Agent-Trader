@@ -22,6 +22,9 @@ class PerfStats:
     total_r: float
     max_drawdown_r: float
     max_consecutive_losses: int
+    sharpe: float                # per-trade reward/volatility
+    sortino: float               # per-trade reward/downside-volatility
+    calmar: float                # total R / max drawdown R
     mc_drawdown_p50: float
     mc_drawdown_p95: float
 
@@ -64,6 +67,41 @@ def max_consecutive_losses(rs: list[float]) -> int:
         else:
             streak = 0
     return worst
+
+
+def sharpe(rs: list[float]) -> float:
+    """Per-trade Sharpe = mean(R) / sample-stdev(R). Dimensionless 'reward per unit of
+    wobble', comparable across strategies. 0.0 when < 2 trades or the series is flat."""
+    n = len(rs)
+    if n < 2:
+        return 0.0
+    mean = sum(rs) / n
+    var = sum((r - mean) ** 2 for r in rs) / (n - 1)
+    sd = math.sqrt(var)
+    return mean / sd if sd > 0 else 0.0
+
+
+def sortino(rs: list[float]) -> float:
+    """Per-trade Sortino = mean(R) / downside deviation (MAR=0). Penalizes only losing
+    variance. inf when there are no losers and the mean is positive; 0.0 when empty/flat."""
+    n = len(rs)
+    if n == 0:
+        return 0.0
+    mean = sum(rs) / n
+    downside = math.sqrt(sum(min(0.0, r) ** 2 for r in rs) / n)
+    if downside <= 0:
+        return float("inf") if mean > 0 else 0.0
+    return mean / downside
+
+
+def calmar(rs: list[float]) -> float:
+    """Calmar = total return (R) / max drawdown (R). Reward per unit of worst pain.
+    inf when there's profit and no drawdown; 0.0 otherwise."""
+    total = sum(rs)
+    mdd = max_drawdown_r(rs)
+    if mdd <= 0:
+        return float("inf") if total > 0 else 0.0
+    return total / mdd
 
 
 def wilson_ci(wins: int, n: int, z: float = 1.96) -> tuple[float, float]:
@@ -135,6 +173,9 @@ def compute(rs: list[float], *, seed: int = 42, n_resamples: int = 2000) -> Perf
         total_r=sum(rs),
         max_drawdown_r=max_drawdown_r(rs),
         max_consecutive_losses=max_consecutive_losses(rs),
+        sharpe=sharpe(rs),
+        sortino=sortino(rs),
+        calmar=calmar(rs),
         mc_drawdown_p50=monte_carlo_drawdown(rs, n_resamples, seed)[0],
         mc_drawdown_p95=monte_carlo_drawdown(rs, n_resamples, seed)[1],
     )

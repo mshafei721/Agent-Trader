@@ -45,6 +45,25 @@ def test_profit_factor_edges():
     assert st.profit_factor([-1.0, -2.0]) == 0.0          # no winners
 
 
+def test_sharpe_sortino_calmar():
+    import statistics
+    rs = [1.0, -1.0, 1.0, -1.0, 2.0]  # mean 0.4
+    assert math.isclose(st.sharpe(rs), 0.4 / statistics.stdev(rs))
+    assert math.isclose(st.sortino(rs), 0.4 / math.sqrt(2.0 / 5))  # downside dev = sqrt((1+1)/5)
+    # cum 1,0,1,0,2 -> peak 1,1,1,1,2 -> maxDD 1 -> calmar total(2)/1
+    assert math.isclose(st.calmar(rs), 2.0)
+
+
+def test_risk_adjusted_edge_cases():
+    assert st.sharpe([1.0]) == 0.0                  # < 2 trades
+    assert st.sharpe([2.0, 2.0]) == 0.0             # zero variance
+    assert st.sortino([1.0, 2.0]) == float("inf")   # no losers, positive mean
+    assert st.sortino([]) == 0.0
+    assert st.calmar([1.0, 2.0]) == float("inf")    # profit, no drawdown
+    assert st.calmar([-1.0, -2.0]) == -1.0          # total -3 / maxDD 3
+    assert st.calmar([0.0, 0.0]) == 0.0             # no profit, no drawdown
+
+
 def test_wilson_ci_within_unit_interval():
     lo, hi = st.wilson_ci(6, 10)
     assert 0.0 <= lo < 0.6 < hi <= 1.0

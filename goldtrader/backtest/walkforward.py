@@ -126,7 +126,8 @@ def format_report(wf: WFResult, grid_trades: dict[str, list[Trade]], seed: int) 
     st = wf.stats
     lines.append(f"  WF-OOS: {st.trades} trades  win {st.win_rate:.1%}  "
                  f"exp {st.expectancy:+.3f}R (95% CI {st.expectancy_ci[0]:+.3f}..{st.expectancy_ci[1]:+.3f})  "
-                 f"PF {st.profit_factor:.2f}  total {st.total_r:+.1f}R  maxDD {st.max_drawdown_r:.1f}R")
+                 f"PF {st.profit_factor:.2f}  total {st.total_r:+.1f}R  maxDD {st.max_drawdown_r:.1f}R  "
+                 f"Sharpe {st.sharpe:+.3f}  Calmar {st.calmar:+.2f}")
     bk, bst = best_in_sample(grid_trades, seed)
     lines.append(f"  (best SINGLE config in-sample: {bk} exp {bst.expectancy:+.3f}R, "
                  f"PF {bst.profit_factor:.2f} — degradation to WF-OOS shows overfit risk)")

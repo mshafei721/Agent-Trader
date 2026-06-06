@@ -208,6 +208,7 @@ def backtest():
           f"(95% CI {st.expectancy_ci[0]:+.3f}..{st.expectancy_ci[1]:+.3f})")
     print(f"  profit_factor={st.profit_factor:.2f}  total={st.total_r:+.1f}R")
     print(f"  max_drawdown={st.max_drawdown_r:.1f}R  max_consec_losses={st.max_consecutive_losses}")
+    print(f"  Sharpe={st.sharpe:+.3f}/trade  Sortino={st.sortino:+.3f}  Calmar={st.calmar:+.2f}")
     print(f"  Monte-Carlo drawdown: p50={st.mc_drawdown_p50:.1f}R  p95={st.mc_drawdown_p95:.1f}R")
     if st.trades < 30:
         print("  EDGE: insufficient sample (need >=30 trades for a meaningful read)")
