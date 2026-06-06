@@ -183,6 +183,15 @@ class Settings(BaseSettings):
     # the defensive self-heal scaler. See backtest/seasonal.py for the evidence.
     seasonal_bias_enabled: bool = Field(default=True)
     seasonal_offseason_scaler: float = Field(default=0.6)  # size factor for non-winter-long entries
+    # TSMOM regime overlay: damp NEW LONGS in a ~12-month gold downtrend (lab: long/flat halves
+    # maxDD 48%->29%). Damp-only; shorts/uptrend longs unaffected.
+    tsmom_regime_enabled: bool = Field(default=True)
+    tsmom_regime_lookback_days: int = Field(default=252)   # ~12 trading months
+    tsmom_downtrend_scaler: float = Field(default=0.5)     # long size factor in a 12mo downtrend
+    # Vol-targeting overlay: damp size when realized annual vol exceeds the target (tail control).
+    vol_target_enabled: bool = Field(default=True)
+    vol_target_annual: float = Field(default=0.18)         # ~gold's normal vol; damp above it
+    vol_lookback_days: int = Field(default=20)
 
     # ---------- Backtest / validation lab (V7 Phase 2) ----------
     backtest_bars: int = Field(default=6000)            # M30 bars to pull (~125 trading days)

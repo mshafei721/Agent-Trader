@@ -32,7 +32,7 @@ from ..risk.manager import RiskManager, _tf, can_pyramid, half_lot, open_risk_mo
 from ..safety import guards
 from ..strategy.bias import BiasProvider, bias_vetoes
 from ..strategy.exits import chandelier_stop, ratchet_stop, should_bias_exit, should_cut_loss
-from ..strategy.seasonal_bias import seasonal_size_scaler
+from ..strategy.overlays import ensemble_size_scaler
 from ..strategy.technical import TechnicalEngine
 from ..types import Action, OrderIntent, today_iso
 from . import scheduler
@@ -437,13 +437,21 @@ class Supervisor:
                 log.info("add_blocked", reason=reason)
                 return
 
-        # 11. risk sizing (defensive self-heal scaler + seasonal bias — both only reduce size)
+        # 11. risk sizing: defensive self-heal + the lab-grounded sizing-overlay ensemble.
+        # All overlays are DAMP-ONLY (<=1.0): they compose with the defensive scaler and never
+        # breach the risk ceiling. An overlay must never break trading -> degrade to no-damp.
         intent = OrderIntent(side=side, confidence=tech.score,
                              rationale=rationale, signal_hash=dedup_key)
-        season_mult, season_reason = seasonal_size_scaler(datetime.now(timezone.utc), side, s)
-        if season_mult < 1.0:
-            log.info("seasonal_bias", side=side.value, scaler=season_mult, reason=season_reason)
-        decision = self.risk.evaluate(intent, risk_scaler=defensive.risk_mult * season_mult)
+        try:
+            d1 = self.client.get_rates(_tf("D1"), s.tsmom_regime_lookback_days + 30)
+            closes = d1["close"] if d1 is not None and len(d1) else None
+        except Exception:  # noqa: BLE001
+            closes = None
+        overlay_mult, overlay = ensemble_size_scaler(datetime.now(timezone.utc), side, closes, s)
+        if overlay_mult < 1.0:
+            log.info("sizing_overlay", side=side.value, scaler=round(overlay_mult, 3),
+                     seasonal=overlay["seasonal"], tsmom=overlay["tsmom"], vol=overlay["vol"])
+        decision = self.risk.evaluate(intent, risk_scaler=defensive.risk_mult * overlay_mult)
         if not decision.approved:
             log.info("risk_rejected", reason=decision.reason)
             self.state.last_signal_hash = dedup_key

@@ -1020,7 +1020,7 @@
     "no_trigger": o => `Checked for a setup — none right now.`,
     "market_closed": o => `Market is closed — waiting.`,
     "add_blocked": o => `Did not add to the position (pyramiding rules).`,
-    "seasonal_bias": o => `Reduced trade size — off the favored winter-long season (${o.reason || ""}).`,
+    "sizing_overlay": o => { const w = []; if (o.seasonal < 1) w.push("off-season"); if (o.tsmom < 1) w.push("gold downtrend"); if (o.vol < 1) w.push("high volatility"); return `Reduced trade size (×${o.scaler}) — ${w.join(", ") || "risk overlays"}.`; },
     "risk_rejected": o => `Skipped a trade — risk checks declined it.`,
     "total_risk_cap": o => `Skipped a trade — already at the open-risk cap.`,
     "spread_guard_triggered": o => `Skipped entry — the spread is too wide right now.`,
