@@ -161,6 +161,19 @@ for to `.env`. The Technical analyst uses free Yahoo data and needs no key.
 .\run_supervisor.ps1        # Ctrl+C stops gracefully
 ```
 
+**Detached (background, race-free):**
+```powershell
+.\start_trio.ps1        # starts supervisor -> waits for a fresh heartbeat -> watchdog + dashboard
+```
+`start_trio.ps1` skips if a supervisor is already running (no duplicates) and only starts the
+watchdog once the heartbeat is fresh, so a slow startup bias refresh can't trigger a duplicate.
+
+**Auto-resume after a reboot (no admin):** a launcher in the user **Startup folder**
+(`GoldTrader-Resume.cmd` → `start_trio.ps1`) brings the trio back at logon. It waits for the
+MetaTrader 5 terminal first (MT5 must auto-start and stay logged in). Remove it by deleting that
+`.cmd` from `shell:startup`. *(For a true no-login boot start, use the NSSM services below — but
+those run in session 0 and need MT5 launchable headlessly with credentials in `.env`.)*
+
 **As an auto-restarting Windows service (24/5):** install [NSSM](https://nssm.cc), then
 run **as Administrator**:
 ```powershell
