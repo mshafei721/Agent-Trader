@@ -33,7 +33,7 @@ from ..risk.manager import RiskManager, _tf, can_pyramid, half_lot, open_risk_mo
 from ..safety import guards
 from ..strategy.bias import BiasProvider, bias_vetoes
 from ..strategy.exits import chandelier_stop, ratchet_stop, should_bias_exit, should_cut_loss
-from ..strategy.overlays import ensemble_size_scaler
+from ..strategy.overlays import ensemble_size_scaler, rebalance_lots
 from ..strategy.technical import TechnicalEngine
 from ..types import Action, OrderIntent, today_iso
 from . import scheduler
@@ -297,15 +297,20 @@ class Supervisor:
             self.reconcile_closed()
         except Exception as exc:  # noqa: BLE001
             log.warning("reconcile_failed", error=str(exc))
-        try:
-            self.manage_open_positions()
-        except Exception as exc:  # noqa: BLE001
-            log.warning("manage_positions_failed", error=str(exc))
-        # Weekend flat: close everything before the Friday close so a tight stop can't be
-        # gapped through on the Monday reopen. Blocks new entries for the rest of the window.
-        if s.weekend_flat_enabled and scheduler.should_close_for_weekend(s):
-            self._close_all_positions("weekend_flat")
-            return False
+        # Tactical position management (scale-out / trail / cut / bias-exit) is for the intraday
+        # entries; the seasonal-core allocation manages its held position via the rebalance cycle.
+        if not s.core_allocation_enabled:
+            try:
+                self.manage_open_positions()
+            except Exception as exc:  # noqa: BLE001
+                log.warning("manage_positions_failed", error=str(exc))
+            # Weekend flat: close everything before the Friday close so a tight stop can't be
+            # gapped through on the Monday reopen. (The core allocation HOLDS through weekends,
+            # like buy&hold — the backtest assumed continuous holding; its overlays are the risk
+            # control, plus the wide catastrophic stop + daily/total-loss caps.)
+            if s.weekend_flat_enabled and scheduler.should_close_for_weekend(s):
+                self._close_all_positions("weekend_flat")
+                return False
         # Daily-loss gate blocks NEW entries only — management above still ran.
         daily = guards.check_daily_loss(self.state.day_anchor_equity, equity, s)
         if not daily.allowed:
@@ -492,11 +497,98 @@ class Supervisor:
         self.state.last_run_iso = datetime.now(timezone.utc).isoformat()
         self.state.save(s.state_file)
 
+    # ---------------- seasonal-core allocation (replaces entry_cycle when enabled) ----------------
+    def core_allocation_cycle(self):
+        """Hold a long-gold position at target exposure = the overlay stack (winter x TSMOM x
+        vol-target), rebalanced only on meaningful shifts. Long-only; respects DRY_RUN, the
+        spread guard, and the hard floor (base lots clamped by max_lots_absolute)."""
+        s = self.s
+        if self.breaker.is_open:
+            log.warning("breaker_open_hold")
+            return
+        spec = self.client.spec
+        try:
+            d1 = self.client.get_rates(_tf("D1"), s.tsmom_regime_lookback_days + 30)
+            closes = d1["close"] if d1 is not None and len(d1) else None
+        except Exception:  # noqa: BLE001
+            closes = None
+        target, overlay = ensemble_size_scaler(datetime.now(timezone.utc), Action.BUY, closes, s)
+        longs = [p for p in self.client.get_open_positions() if p.type == 0]
+        cur_lots = round(sum(float(p.volume) for p in longs), 8)
+        base = min(s.core_base_lots, s.max_lots_absolute)
+        delta = rebalance_lots(target, cur_lots, base, vol_step=spec.volume_step,
+                               vol_min=spec.volume_min, max_lots=s.max_lots_absolute,
+                               threshold=s.core_rebalance_threshold)
+        log.info("core_target", target_expo=round(target, 3), cur_lots=cur_lots, base_lots=base,
+                 delta=round(delta, 4), seasonal=overlay["seasonal"], tsmom=overlay["tsmom"],
+                 vol=overlay["vol"])
+        if delta == 0:
+            return
+        try:
+            spread_pts = self.client.current_spread_points()
+        except Exception as exc:  # noqa: BLE001
+            log.warning("spread_read_failed_skip", error=str(exc))
+            return
+        if s.spread_guard_enabled and not guards.entry_spread_ok(spread_pts, s).allowed:
+            log.info("spread_guard_triggered", context="core_rebalance")
+            return
+        if delta > 0:
+            self._core_buy(round(delta, 8), float(target))
+        else:
+            self._core_trim(round(-delta, 8), longs)
+
+    def _core_buy(self, lots: float, target: float) -> None:
+        s = self.s
+        spec = self.client.spec
+        tick = self.client.get_tick()
+        entry = float(tick.ask)
+        sl = round(entry * (1 - s.core_catastrophic_stop_pct / 100.0), spec.digits)
+        if s.dry_run:
+            log.info("core_buy_dryrun", lots=lots, entry=round(entry, 2), sl=sl)
+            self.notifier.notify("DRY-RUN core buy", f"{lots} lots @~{entry:.2f} target_expo={target:.2f}")
+            return
+        decision_id = self.journal.record_decision(
+            datetime.now(timezone.utc).isoformat(), today_iso(), "BUY", target, "core",
+            "seasonal-core allocation", "", s.dry_run, None)
+        result = self.client.place_market_order(Action.BUY, lots, sl, 0.0)
+        self.journal.record_order(decision_id, datetime.now(timezone.utc).isoformat(), "BUY",
+                                  lots, entry, sl, 0.0, 0.0, result.ticket, result.retcode, ok=result.ok)
+        if result.ok:
+            log.info("core_buy_filled", lots=lots, ticket=result.ticket, price=round(result.price, 2))
+            self.notifier.notify("ORDER FILLED",
+                                 f"core BUY {lots} lots ticket={result.ticket} @{result.price:.2f}")
+        else:
+            self.breaker.record_failure(f"core order retcode {result.retcode}")
+            self.notifier.notify("ORDER FAILED", f"core retcode={result.retcode} {result.comment}")
+
+    def _core_trim(self, lots: float, longs: list) -> None:
+        s = self.s
+        spec = self.client.spec
+        remaining = lots
+        for p in longs:
+            if remaining < spec.volume_min:
+                break
+            vol = round(round(min(float(p.volume), remaining) / spec.volume_step) * spec.volume_step, 8)
+            if vol < spec.volume_min:
+                continue
+            if s.dry_run:
+                log.info("core_trim_dryrun", ticket=p.ticket, lots=vol)
+            else:
+                res = self.client.close_position(p, volume=vol)
+                if res.ok:
+                    log.info("core_trim", ticket=p.ticket, lots=vol)
+                else:
+                    self.breaker.record_failure(f"core trim retcode {res.retcode}")
+            remaining = round(remaining - vol, 8)
+
     # ---------------- one-shot (cli run-once) ----------------
     def tick(self):
-        """One full cycle: manage, then evaluate an entry. Used by `cli run-once`."""
+        """One full cycle: manage, then evaluate an entry (or rebalance in core mode)."""
         if self.manage_cycle():
-            self.entry_cycle()
+            if self.s.core_allocation_enabled:
+                self.core_allocation_cycle()
+            else:
+                self.entry_cycle()
 
     # ---------------- run ----------------
     def run(self):
@@ -513,7 +605,10 @@ class Supervisor:
             try:
                 allowed = self.manage_cycle()  # FAST: guards + trade management every cycle
                 if allowed and (time.time() - last_entry) >= entry_period:
-                    self.entry_cycle()         # SLOW: new-entry evaluation
+                    if self.s.core_allocation_enabled:
+                        self.core_allocation_cycle()  # SLOW: rebalance the long-gold core
+                    else:
+                        self.entry_cycle()            # SLOW: new-entry evaluation
                     last_entry = time.time()
                 # PERIODIC: refresh the LLM macro bias regardless of triggers/market-open
                 if (time.time() - last_bias) >= bias_period:

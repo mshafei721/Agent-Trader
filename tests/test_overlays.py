@@ -3,7 +3,34 @@ from datetime import datetime, timezone
 
 from goldtrader.config import Settings
 from goldtrader.strategy import overlays as ov
+from goldtrader.strategy.overlays import rebalance_lots
 from goldtrader.types import Action
+
+
+# ---------------- seasonal-core rebalance sizing ----------------
+def _rl(tgt, cur, base=0.10, *, step=0.01, vmin=0.01, mx=1.0, thr=0.10):
+    return rebalance_lots(tgt, cur, base, vol_step=step, vol_min=vmin, max_lots=mx, threshold=thr)
+
+
+def test_rebalance_buy_to_full():
+    assert abs(_rl(1.0, 0.0) - 0.10) < 1e-9          # flat -> buy the full base
+
+
+def test_rebalance_trim_partial():
+    assert abs(_rl(0.5, 0.10) - (-0.05)) < 1e-9      # full now, target 0.5 -> trim 0.05
+
+
+def test_rebalance_within_threshold_is_noop():
+    assert _rl(0.55, 0.05) == 0.0                    # cur 0.5 vs 0.55 < 0.10 threshold
+
+
+def test_rebalance_flat_trims_everything():
+    assert abs(_rl(0.0, 0.10) - (-0.10)) < 1e-9
+
+
+def test_rebalance_clamped_to_max_and_long_only():
+    assert abs(_rl(1.0, 0.0, mx=0.05) - 0.05) < 1e-9  # capped at max_lots
+    assert _rl(-0.5, 0.0) == 0.0                       # negative target -> long-only, no short
 
 WINTER = datetime(2026, 1, 15, tzinfo=timezone.utc)
 SUMMER = datetime(2026, 7, 15, tzinfo=timezone.utc)

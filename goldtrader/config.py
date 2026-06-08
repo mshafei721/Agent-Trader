@@ -141,6 +141,17 @@ class Settings(BaseSettings):
     # outcomes (repairs gaps from downtime; wide enough to never miss a close).
     reconcile_history_days: int = Field(default=90)
 
+    # ---------- Seasonal-core allocation mode (V7 "lean into what works") ----------
+    # When enabled, the bot REPLACES tactical intraday trading with a low-frequency long-gold
+    # ALLOCATION: it holds a position whose target size = core_base_lots x the overlay stack
+    # (winter x TSMOM-regime x vol-target), rebalanced only when the target shifts by >=
+    # core_rebalance_threshold (~monthly). Long-only; lab-validated (Sharpe 0.67, maxDD 32%,
+    # ~14 rebalances/yr OOS). OFF by default — flip on + restart to switch the live bot over.
+    core_allocation_enabled: bool = Field(default=False)
+    core_base_lots: float = Field(default=0.10)            # lots at full (1.0) exposure; clamped by max_lots_absolute
+    core_rebalance_threshold: float = Field(default=0.10)  # min exposure change to act (anti-churn)
+    core_catastrophic_stop_pct: float = Field(default=20.0)  # wide backstop SL below entry (held, no TP)
+
     # ---------- Cadence ----------
     interval_minutes: int = Field(default=15)
     skip_weekends: bool = Field(default=True)

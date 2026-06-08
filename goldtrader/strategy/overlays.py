@@ -74,6 +74,30 @@ def vol_target_scaler(closes: Sequence[float] | None, s: Settings) -> tuple[floa
     return _clamp(s.vol_target_annual / rv), f"vol {rv:.0%} vs target {s.vol_target_annual:.0%}"
 
 
+def rebalance_lots(target_exposure: float, current_lots: float, base_lots: float, *,
+                   vol_step: float, vol_min: float, max_lots: float, threshold: float) -> float:
+    """Lots to BUY (+) or TRIM (-) to move a long-gold position toward `target_exposure` (0..1).
+
+    Returns 0.0 when already within `threshold` of target, or when the required change is below
+    one minimum lot. Long-only and clamped to max_lots — never leverages or shorts. Drives the
+    live seasonal-core allocation cycle; pure + unit-tested."""
+    base = max(0.0, base_lots)
+    if base <= 0 or vol_step <= 0:
+        return 0.0
+    cur_expo = current_lots / base
+    tgt = max(0.0, min(1.0, target_exposure))
+    if abs(tgt - cur_expo) < threshold:
+        return 0.0
+    target_lots = min(max_lots, base * tgt)
+    target_lots = round(round(target_lots / vol_step) * vol_step, 8)
+    if 0 < target_lots < vol_min:        # can't hold a sub-minimum position -> go flat
+        target_lots = 0.0
+    delta = round(target_lots - current_lots, 8)
+    if abs(delta) < vol_min:
+        return 0.0
+    return delta
+
+
 def ensemble_size_scaler(now: datetime, side: Action, closes: Sequence[float] | None,
                          s: Settings) -> tuple[float, dict]:
     """Product of the three damp-only overlays + a per-overlay breakdown for logging."""
