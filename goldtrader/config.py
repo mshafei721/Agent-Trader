@@ -95,6 +95,15 @@ class Settings(BaseSettings):
     # Charts lead: the LLM only BLOCKS a trade when opposite with conviction >= this.
     bias_veto_conviction: float = Field(default=0.75)
 
+    # ---------- Entry trigger (the M30 timing within the H4/H1 trend gate) ----------
+    # "macd_cross" = current default (fresh MACD cross / momentum continuation — selective).
+    # "donchian"   = breakout of the prior-N-bar high/low (fires more often).
+    # "pullback"   = a dip to the M30 EMA that closes back in the trend direction (fires more).
+    # Alternatives are lab-tested (scripts/exp_triggers.py) before any live use.
+    entry_trigger: Literal["macd_cross", "donchian", "pullback"] = Field(default="macd_cross")
+    donchian_lookback: int = Field(default=20)   # bars for the breakout channel
+    pullback_ema: int = Field(default=50)         # M30 EMA the pullback must touch
+
     # ---------- Technical indicators ----------
     ema_fast: int = Field(default=20)
     ema_slow: int = Field(default=50)

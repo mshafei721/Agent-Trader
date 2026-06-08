@@ -85,23 +85,55 @@ class TechnicalEngine:
         # confluence strength from ADX (capped)
         score = max(0.0, min(1.0, adx1 / 40.0))
 
-        # --- M30 trigger ---
+        # --- M30 trigger (pluggable: macd_cross | donchian | pullback) ---
+        side = Action.BUY if h4_dir > 0 else Action.SELL
+        fires, label, mult = self._m30_trigger(m30, h4_dir)
+        reasons.append(f"{s.trigger_timeframe} trigger[{s.entry_trigger}]={label}")
+        if fires:
+            return TechSignal(side, score * mult, reasons)
+        return TechSignal(None, score, reasons)
+
+    def _m30_trigger(self, m30, h4_dir: int) -> tuple[bool, str, float]:
+        """Whether the M30 timing trigger fires for the (already-confirmed) trend direction.
+        Returns (fires, label, score_mult). Mode is `entry_trigger`; default macd_cross keeps
+        the original behavior exactly. donchian/pullback fire more often (lab-tested first)."""
+        s = self.s
+        mode = s.entry_trigger
+        if mode == "donchian":
+            df = indicators._to_df(m30)
+            n = s.donchian_lookback
+            if len(df) < n + 2:
+                return False, "donchian: warmup", 1.0
+            close = float(df["close"].iloc[-1])
+            prior_high = float(df["high"].iloc[-(n + 1):-1].max())
+            prior_low = float(df["low"].iloc[-(n + 1):-1].min())
+            if h4_dir > 0 and close > prior_high:
+                return True, f"breakout > {n}-bar high", 1.0
+            if h4_dir < 0 and close < prior_low:
+                return True, f"breakout < {n}-bar low", 1.0
+            return False, "no breakout", 1.0
+        if mode == "pullback":
+            df = indicators._to_df(m30)
+            e = s.pullback_ema
+            if len(df) < e + 2:
+                return False, "pullback: warmup", 1.0
+            ema = float(df["close"].ewm(span=e, adjust=False).mean().iloc[-1])
+            close = float(df["close"].iloc[-1])
+            low = float(df["low"].iloc[-1])
+            high = float(df["high"].iloc[-1])
+            if h4_dir > 0 and low <= ema and close > ema:
+                return True, "pullback to EMA (long)", 1.0
+            if h4_dir < 0 and high >= ema and close < ema:
+                return True, "pullback to EMA (short)", 1.0
+            return False, "no pullback", 1.0
+        # default: macd_cross (fresh cross, else momentum continuation)
         cross = indicators.macd_cross(m30, s.macd_fast, s.macd_slow, s.macd_signal)
         _, _, hist = indicators.macd(m30, s.macd_fast, s.macd_slow, s.macd_signal)
         r = indicators.rsi(m30, s.rsi_period)
-        reasons.append(f"{s.trigger_timeframe} macd_cross={cross} hist={hist:.3f} rsi={r:.1f}")
-
-        side = Action.BUY if h4_dir > 0 else Action.SELL
-
         if cross == h4_dir:
-            return TechSignal(side, score, reasons + ["fresh MACD cross trigger"])
-
-        # continuation: momentum already in direction and RSI not over-extended
-        cont = (
-            (h4_dir > 0 and hist > 0 and r == r and r < 70)
-            or (h4_dir < 0 and hist < 0 and r == r and r > 30)
-        )
+            return True, "fresh MACD cross trigger", 1.0
+        cont = ((h4_dir > 0 and hist > 0 and r == r and r < 70)
+                or (h4_dir < 0 and hist < 0 and r == r and r > 30))
         if cont:
-            return TechSignal(side, score * 0.8, reasons + ["momentum continuation trigger"])
-
-        return TechSignal(None, score, reasons + ["no M30 trigger"])
+            return True, "momentum continuation trigger", 0.8
+        return False, "no M30 trigger", 1.0
