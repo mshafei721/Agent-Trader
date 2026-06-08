@@ -128,6 +128,9 @@ class Settings(BaseSettings):
     reflection_use_llm: bool = Field(default=True)
     defensive_loss_streak: int = Field(default=4)       # consecutive losers -> halve risk
     defensive_pause_streak: int = Field(default=6)      # consecutive losers -> pause new entries
+    # Broker-truth reconciliation: how far back to scan MT5 deals when syncing closed-trade
+    # outcomes (repairs gaps from downtime; wide enough to never miss a close).
+    reconcile_history_days: int = Field(default=90)
 
     # ---------- Cadence ----------
     interval_minutes: int = Field(default=15)

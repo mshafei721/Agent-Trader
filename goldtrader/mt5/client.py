@@ -338,11 +338,13 @@ class MT5Client:
                 request_dump=request,
             )
 
-    def get_deals_since(self, since: datetime):
-        """Realized deals (for PnL / learning) since a datetime."""
+    def get_deals_since(self, since: datetime, magic_only: bool = True):
+        """Realized deals since a datetime. magic_only=True keeps only this bot's deals
+        (legacy default); pass False for ALL deals — the broker's SL/TP CLOSE deals carry
+        magic 0, so the truth-sync must see them and attribute by the opening deal's magic."""
         with self._lock:
             now = datetime.now(timezone.utc)
             deals = mt5.history_deals_get(since, now)
             if deals is None:
                 return []
-            return [d for d in deals if d.magic == self.s.magic]
+            return list(deals) if not magic_only else [d for d in deals if d.magic == self.s.magic]

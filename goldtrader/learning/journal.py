@@ -117,6 +117,28 @@ class Journal:
                  r_multiple, close_reason),
             )
 
+    def upsert_outcome(self, mt5_ticket, close_ts, exit_price, realized_pnl,
+                       r_multiple, close_reason) -> bool:
+        """Insert or REPLACE the outcome for a position (broker-truth sync). Unlike
+        record_outcome (INSERT OR IGNORE), this overwrites a wrong/zero prior record.
+        Returns True if it was a brand-new close (for notifications)."""
+        with self._conn() as c:
+            existed = c.execute(
+                "SELECT 1 FROM outcomes WHERE mt5_ticket=?", (mt5_ticket,)).fetchone() is not None
+            row = c.execute(
+                "SELECT id FROM orders WHERE mt5_ticket=? ORDER BY id DESC LIMIT 1",
+                (mt5_ticket,)).fetchone()
+            order_id = row["id"] if row else None
+            c.execute(
+                "INSERT INTO outcomes(order_id,mt5_ticket,close_ts,exit_price,realized_pnl,"
+                "r_multiple,close_reason) VALUES(?,?,?,?,?,?,?) "
+                "ON CONFLICT(mt5_ticket) DO UPDATE SET close_ts=excluded.close_ts, "
+                "exit_price=excluded.exit_price, realized_pnl=excluded.realized_pnl, "
+                "r_multiple=excluded.r_multiple, close_reason=excluded.close_reason",
+                (order_id, mt5_ticket, close_ts, exit_price, realized_pnl, r_multiple, close_reason),
+            )
+            return not existed
+
     def open_tickets(self) -> set[int]:
         """Tickets we have orders for but no recorded outcome yet."""
         with self._conn() as c:

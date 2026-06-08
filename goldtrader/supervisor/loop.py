@@ -21,6 +21,7 @@ from ..feeds.cot import CotProvider
 from ..healing.circuit_breaker import CircuitBreaker
 from ..healing.heartbeat import write_heartbeat
 from ..learning.journal import Journal
+from ..learning.reconcile import aggregate_closed_positions, close_iso
 from ..learning.reflection import ReflectionEngine, defensive_state
 from ..logging_setup import get_logger, setup_logging
 from ..mt5.client import MT5Client
@@ -121,42 +122,35 @@ class Supervisor:
         tmp.write_text(json.dumps(payload), encoding="utf-8")
         tmp.replace(path)
 
-    # ---------------- learning reconciliation ----------------
+    # ---------------- learning reconciliation (broker truth) ----------------
     def reconcile_closed(self):
-        """Detect positions that closed since last check, record outcomes."""
-        open_now = {p.ticket for p in self.client.get_open_positions()}
-        pending = self.journal.open_tickets()
-        closed = pending - open_now
-        if not closed:
+        """Sync closed-position outcomes from MT5 deal history (the broker is ground truth).
+
+        Aggregates ALL deals by position (so the broker's SL/TP CLOSE deals — which carry
+        magic 0 — are included), attributes positions to this bot by the OPENING deal's magic,
+        and upserts each fully-closed position with its REAL P&L and close time. This repairs
+        prior wrong/zero/mis-dated records and backfills closes missed during downtime; it is
+        idempotent, so it runs safely every manage cycle."""
+        since = datetime.now(timezone.utc) - timedelta(days=self.s.reconcile_history_days)
+        try:
+            deals = self.client.get_deals_since(since, magic_only=False)
+        except Exception as exc:  # noqa: BLE001 — never break the manage loop on a history hiccup
+            log.warning("reconcile_history_failed", error=str(exc))
             return
-        # Pull recent deals to attribute realized PnL.
-        deals = self.client.get_deals_since(datetime.now(timezone.utc) - timedelta(days=3))
-        pnl_by_pos: dict[int, float] = {}
-        exit_by_pos: dict[int, float] = {}
-        for d in deals:
-            pid = getattr(d, "position_id", None)
-            if pid is None:
-                continue
-            pnl_by_pos[pid] = pnl_by_pos.get(pid, 0.0) + float(d.profit) + float(
-                getattr(d, "swap", 0.0)
-            ) + float(getattr(d, "commission", 0.0))
-            exit_by_pos[pid] = float(d.price)
-        for ticket in closed:
-            order = self.journal.order_for_ticket(ticket)
-            pnl = pnl_by_pos.get(ticket, 0.0)
+        open_now = {p.ticket for p in self.client.get_open_positions()}
+        for c in aggregate_closed_positions(deals, open_now, self.s.magic):
+            order = self.journal.order_for_ticket(c["position_id"])
             risk_amount = (order["risk_amount"] if order and order["risk_amount"] else 0.0)
-            r_mult = (pnl / risk_amount) if risk_amount else 0.0
-            self.journal.record_outcome(
-                mt5_ticket=ticket,
-                close_ts=today_iso(),
-                exit_price=exit_by_pos.get(ticket, 0.0),
-                realized_pnl=pnl,
-                r_multiple=r_mult,
-                close_reason="closed",
-            )
-            log.info("outcome_recorded", ticket=ticket, pnl=round(pnl, 2),
-                     r_multiple=round(r_mult, 2))
-            self.notifier.notify("position closed", f"ticket={ticket} pnl={pnl:+.2f} R={r_mult:+.2f}")
+            r_mult = (c["pnl"] / risk_amount) if risk_amount else 0.0
+            is_new = self.journal.upsert_outcome(
+                mt5_ticket=c["position_id"], close_ts=close_iso(c["close_time"]),
+                exit_price=c["exit_price"], realized_pnl=c["pnl"],
+                r_multiple=round(r_mult, 4), close_reason="closed")
+            if is_new:
+                log.info("outcome_recorded", ticket=c["position_id"], pnl=c["pnl"],
+                         r_multiple=round(r_mult, 2))
+                self.notifier.notify("position closed",
+                                     f"ticket={c['position_id']} pnl={c['pnl']:+.2f} R={r_mult:+.2f}")
 
     # ---------------- trade management (fast loop, ~every manage_interval_seconds) ----------------
     def manage_open_positions(self):

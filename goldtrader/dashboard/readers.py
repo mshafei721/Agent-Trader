@@ -243,7 +243,7 @@ def read_journal(s: Settings, recent: int = 30, perf_n: int = 20) -> dict:
             return {"available": False, "performance": {}, "recent": [], "closed_count": 0}
         closed_count = int(conn.execute("SELECT COUNT(*) AS n FROM outcomes").fetchone()["n"])
         perf_rows = conn.execute(
-            "SELECT realized_pnl, r_multiple FROM outcomes ORDER BY id DESC LIMIT ?",
+            "SELECT realized_pnl, r_multiple FROM outcomes ORDER BY close_ts DESC, id DESC LIMIT ?",
             (perf_n,),
         ).fetchall()
         performance = _performance_summary(perf_rows)
@@ -253,7 +253,7 @@ def read_journal(s: Settings, recent: int = 30, perf_n: int = 20) -> dict:
             "FROM outcomes oc "
             "LEFT JOIN orders o ON oc.order_id = o.id "
             "LEFT JOIN decisions d ON o.decision_id = d.id "
-            "ORDER BY oc.id DESC LIMIT ?",
+            "ORDER BY oc.close_ts DESC, oc.id DESC LIMIT ?",
             (recent,),
         ).fetchall()
         recent_list = [{
@@ -307,7 +307,7 @@ def read_equity(s: Settings, cap: int = 500) -> dict:
         if conn is None:
             return {"available": False, "curve": [], "trades": 0}
         rows = conn.execute(
-            "SELECT realized_pnl, r_multiple FROM outcomes ORDER BY id ASC"
+            "SELECT realized_pnl, r_multiple FROM outcomes ORDER BY close_ts ASC, id ASC"
         ).fetchall()
         if not rows:
             return {"available": True, "curve": [], "trades": 0,
