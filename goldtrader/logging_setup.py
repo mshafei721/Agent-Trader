@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from logging.handlers import RotatingFileHandler
 
 import structlog
@@ -46,11 +47,14 @@ def setup_logging(console: bool = True) -> None:
     root.handlers.clear()
     root.setLevel(logging.INFO)
 
-    file_handler = RotatingFileHandler(
-        settings.log_file, maxBytes=5_000_000, backupCount=5, encoding="utf-8"
-    )
-    file_handler.setFormatter(json_formatter)
-    root.addHandler(file_handler)
+    # Skip the production file handler under tests (GOLDTRADER_LOG_NO_FILE=1) so the test
+    # suite never writes into logs/goldtrader.jsonl — the live log the dashboard streams.
+    if not os.environ.get("GOLDTRADER_LOG_NO_FILE"):
+        file_handler = RotatingFileHandler(
+            settings.log_file, maxBytes=5_000_000, backupCount=5, encoding="utf-8"
+        )
+        file_handler.setFormatter(json_formatter)
+        root.addHandler(file_handler)
 
     if console:
         stream = logging.StreamHandler()
