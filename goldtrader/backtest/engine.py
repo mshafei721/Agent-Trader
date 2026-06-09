@@ -34,6 +34,7 @@ from ..strategy.technical import _tf, TechnicalEngine
 from ..types import Action, OrderIntent, SymbolSpec
 from . import stats as stats_mod
 from .broker import BacktestClient
+from .daily_regime import regime_allows
 from .data import TF_SECONDS
 
 log = get_logger("goldtrader.backtest.engine")
@@ -69,7 +70,8 @@ def run_backtest(s: Settings, bars_by_tf: dict[int, pd.DataFrame], spec: SymbolS
                  *, label: str | None = None, model_management: bool = True,
                  apply_session: bool = False, cot_zseries=None,
                  apply_regime: bool = False, regime_period: int = 20,
-                 regime_min_er: float = 0.0) -> BacktestResult:
+                 regime_min_er: float = 0.0,
+                 pbull_series=None, pbull_threshold: float = 0.52) -> BacktestResult:
     """Replay over cached history.
 
     apply_session: also apply the London-NY session-time entry gate (uses bar UTC time).
@@ -79,6 +81,10 @@ def run_backtest(s: Settings, bars_by_tf: dict[int, pd.DataFrame], spec: SymbolS
     apply_regime: only enter when the trigger-timeframe Kaufman Efficiency Ratio over
                  regime_period bars >= regime_min_er (i.e. the market is genuinely trending,
                  not chopping) — the experiment to cut range-bound bleed.
+    pbull_series: optional sorted list of (epoch, pbull) from daily_regime.pbull_series;
+                 when given, BUY needs pbull >= pbull_threshold and SELL needs
+                 pbull <= 1 - pbull_threshold as-of the decision instant (FAILS OPEN
+                 before the first value).
     """
     trigger_tf = _tf(s.trigger_timeframe)
     m30 = bars_by_tf[trigger_tf]
@@ -87,7 +93,8 @@ def run_backtest(s: Settings, bars_by_tf: dict[int, pd.DataFrame], spec: SymbolS
     er = _efficiency_ratio(m30["close"], regime_period) if apply_regime else None
     if label is None:
         gates = "".join(["+sess" if apply_session else "", "+cot" if cot_zseries else "",
-                         "+rgm" if apply_regime else ""])
+                         "+rgm" if apply_regime else "",
+                         "+dreg" if pbull_series is not None else ""])
         label = ("managed" if model_management else "fixed-tp") + gates
 
     bt = BacktestClient(s, spec, bars_by_tf, spread_points=s.backtest_cost_spread_points)
@@ -124,6 +131,11 @@ def run_backtest(s: Settings, bars_by_tf: dict[int, pd.DataFrame], spec: SymbolS
         if er is not None and er[i] < regime_min_er:  # regime gate: skip choppy markets
             i += 1
             continue
+        if pbull_series is not None:  # daily trend-regime gate (direction-aware)
+            pb = _cot_z_asof(pbull_series, decision_instant)  # generic as-of lookup
+            if pb is not None and not regime_allows(sig.side == Action.BUY, pb, pbull_threshold):
+                i += 1
+                continue
         decision = risk.evaluate(OrderIntent(side=sig.side, confidence=sig.score,
                                              rationale="backtest", signal_hash="bt"))
         if not decision.approved:

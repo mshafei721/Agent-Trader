@@ -104,6 +104,40 @@ def calmar(rs: list[float]) -> float:
     return total / mdd
 
 
+def deflated_sharpe(rs: list[float], n_trials: int) -> float:
+    """Deflated Sharpe Ratio (Bailey & Lopez de Prado 2014): the probability that the
+    TRUE per-trade Sharpe is > 0 after correcting for selection across `n_trials`
+    tried configurations and for non-normal returns. > 0.95 = statistically credible.
+
+    Uses the candidate's own SR standard error as the proxy for the variance of trial
+    SRs (the standard single-strategy practice when per-trial SRs weren't recorded).
+    """
+    from statistics import NormalDist
+
+    n = len(rs)
+    sr = sharpe(rs)
+    if n < 10 or n_trials < 1:
+        return 0.0
+    mean = sum(rs) / n
+    sd = math.sqrt(sum((r - mean) ** 2 for r in rs) / (n - 1))
+    if sd <= 0:
+        return 0.0
+    skew = sum(((r - mean) / sd) ** 3 for r in rs) / n
+    kurt = sum(((r - mean) / sd) ** 4 for r in rs) / n  # Pearson (normal = 3)
+    var_sr = (1 - skew * sr + (kurt - 1) / 4.0 * sr * sr) / (n - 1)
+    if var_sr <= 0:
+        return 0.0
+    se_sr = math.sqrt(var_sr)
+    nd = NormalDist()
+    if n_trials > 1:
+        gamma = 0.5772156649015329  # Euler-Mascheroni
+        sr0 = se_sr * ((1 - gamma) * nd.inv_cdf(1 - 1.0 / n_trials)
+                       + gamma * nd.inv_cdf(1 - 1.0 / (n_trials * math.e)))
+    else:
+        sr0 = 0.0
+    return nd.cdf((sr - sr0) / se_sr)
+
+
 def wilson_ci(wins: int, n: int, z: float = 1.96) -> tuple[float, float]:
     """Wilson score interval for a win-rate proportion (better than normal at small n)."""
     if n == 0:
