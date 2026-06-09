@@ -73,3 +73,19 @@ def entry_spread_ok(spread_points: float, settings: Settings) -> GateResult:
             f"spread {spread_points:.0f}pts > cap {settings.max_entry_spread_points:.0f}pts",
         )
     return GateResult(True)
+
+
+def entry_atr_spike_ok(spike_ratio: float, settings: Settings) -> GateResult:
+    """Block a NEW entry when volatility just exploded vs its recent baseline
+    (unscheduled shocks the news calendar can't see). FAILS OPEN on missing data —
+    it is a quality filter, not a hard safety floor."""
+    if not settings.atr_spike_guard_enabled:
+        return GateResult(True, "atr spike guard disabled")
+    if spike_ratio != spike_ratio:  # NaN -> not enough bars / read failed
+        return GateResult(True, "atr spike ratio unavailable")
+    if spike_ratio > settings.atr_spike_mult:
+        return GateResult(
+            False,
+            f"ATR spike x{spike_ratio:.2f} > cap x{settings.atr_spike_mult:.1f}",
+        )
+    return GateResult(True)

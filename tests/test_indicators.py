@@ -40,3 +40,25 @@ def test_atr_insufficient_data_is_nan():
     df = _trending_df(n=5)
     a = indicators.atr(df, 14)
     assert a != a  # NaN
+
+
+def test_atr_spike_ratio_calm_market_near_one():
+    df = _trending_df(n=120, step=0.5, noise=0.1)
+    r = indicators.atr_spike_ratio(df, 14)
+    assert r == r  # not NaN
+    assert 0.5 < r < 1.5
+
+
+def test_atr_spike_ratio_detects_shock():
+    df = _trending_df(n=120, step=0.5, noise=0.1)
+    # blow out the last 3 bars' ranges to simulate an unscheduled shock
+    for i in (-3, -2, -1):
+        df.loc[df.index[i], "high"] = df["close"].iloc[i] + 40
+        df.loc[df.index[i], "low"] = df["close"].iloc[i] - 40
+    r = indicators.atr_spike_ratio(df, 14)
+    assert r > 2.8
+
+
+def test_atr_spike_ratio_insufficient_data_is_nan():
+    r = indicators.atr_spike_ratio(_trending_df(n=20), 14)
+    assert r != r  # NaN

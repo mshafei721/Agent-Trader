@@ -34,6 +34,27 @@ def test_entry_spread_disabled_passes():
     assert guards.entry_spread_ok(999.0, s).allowed is True
 
 
+# ---------------- ATR-spike guard ----------------
+def test_atr_spike_within_cap_allows():
+    s = Settings(atr_spike_guard_enabled=True, atr_spike_mult=2.8)
+    assert guards.entry_atr_spike_ok(1.5, s).allowed is True
+
+
+def test_atr_spike_blocks_shock():
+    s = Settings(atr_spike_guard_enabled=True, atr_spike_mult=2.8)
+    assert guards.entry_atr_spike_ok(3.2, s).allowed is False
+
+
+def test_atr_spike_nan_fails_open():
+    s = Settings(atr_spike_guard_enabled=True, atr_spike_mult=2.8)
+    assert guards.entry_atr_spike_ok(float("nan"), s).allowed is True
+
+
+def test_atr_spike_disabled_passes():
+    s = Settings(atr_spike_guard_enabled=False)
+    assert guards.entry_atr_spike_ok(99.0, s).allowed is True
+
+
 # ---------------- P0.3 session gate ----------------
 def test_in_session_overlap_allows():
     s = Settings(session_filter_enabled=True, trading_session_start_utc=7, trading_session_end_utc=17)

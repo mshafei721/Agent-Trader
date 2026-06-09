@@ -32,6 +32,25 @@ def atr(rates, period: int = 14) -> float:
     return float(atr_series.iloc[-1])
 
 
+def atr_spike_ratio(rates, period: int = 14, baseline: int = 20) -> float:
+    """Latest ATR / its mean over the prior `baseline` bars. >1 = vol expanding;
+    a large ratio means an unscheduled volatility shock. NaN if not enough bars."""
+    df = _to_df(rates)
+    if len(df) < period + baseline + 1:
+        return float("nan")
+    high, low, close = df["high"], df["low"], df["close"]
+    prev_close = close.shift(1)
+    tr = pd.concat(
+        [(high - low), (high - prev_close).abs(), (low - prev_close).abs()],
+        axis=1,
+    ).max(axis=1)
+    atr_series = tr.ewm(alpha=1 / period, adjust=False).mean()
+    base = float(atr_series.iloc[-baseline - 1:-1].mean())
+    if not base or base != base:
+        return float("nan")
+    return float(atr_series.iloc[-1] / base)
+
+
 def adx(rates, period: int = 14) -> float:
     """Average Directional Index of the most recent bar."""
     df = _to_df(rates)
