@@ -65,6 +65,23 @@ def _loss_streak(rows) -> int:
     return streak
 
 
+def _last_close_age_hours(rows) -> float | None:
+    """Hours since the newest outcome's close_ts (None if missing/unparseable)."""
+    try:
+        ts = rows[0]["close_ts"]
+    except (IndexError, KeyError):
+        return None
+    if not ts:
+        return None
+    try:
+        closed = datetime.fromisoformat(str(ts))
+    except ValueError:
+        return None
+    if closed.tzinfo is None:
+        closed = closed.replace(tzinfo=timezone.utc)
+    return (datetime.now(timezone.utc) - closed).total_seconds() / 3600.0
+
+
 def defensive_state(journal: Journal, settings: Settings) -> DefensiveState:
     """Reduce risk / pause entries after losing streaks. Only ever makes trading safer."""
     rows = journal.recent_outcomes(limit=10)
@@ -75,7 +92,15 @@ def defensive_state(journal: Journal, settings: Settings) -> DefensiveState:
     avg_r = sum(rs) / len(rs) if rs else 0.0
 
     if streak >= settings.defensive_pause_streak:
-        return DefensiveState(0.25, True, f"pause: {streak} consecutive losers")
+        # Time-limited: a permanent pause deadlocks (paused -> no trades -> no new
+        # outcome to break the streak). After the cooldown, resume at quarter risk
+        # until a non-losing trade clears the streak.
+        age_h = _last_close_age_hours(rows)
+        if age_h is None or age_h < settings.defensive_pause_hours:
+            return DefensiveState(0.25, True, f"pause: {streak} consecutive losers")
+        return DefensiveState(0.25, False,
+                              f"recovery at quarter risk: {streak} consecutive losers, "
+                              f"pause expired ({age_h:.0f}h since last close)")
     if streak >= settings.defensive_loss_streak:
         return DefensiveState(0.5, False, f"halve risk: {streak} consecutive losers")
     if streak == 2:

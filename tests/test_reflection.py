@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta, timezone
+
 from goldtrader.config import Settings
 from goldtrader.learning.reflection import (
     compute_stats,
@@ -42,6 +44,23 @@ def test_defensive_four_losers_halves():
 def test_defensive_six_losers_pauses():
     d = defensive_state(_FakeJournal([_o(-1)] * 6), S)
     assert d.pause is True and d.risk_mult == 0.25
+
+
+def test_defensive_pause_holds_within_cooldown():
+    now = datetime.now(timezone.utc).isoformat()
+    rows = [dict(_o(-1), close_ts=now)] * 6
+    d = defensive_state(_FakeJournal(rows), S)
+    assert d.pause is True and d.risk_mult == 0.25
+
+
+def test_defensive_pause_expires_into_quarter_risk_recovery():
+    # The pause must be time-limited: paused -> no trades -> no new outcome would
+    # otherwise deadlock the bot forever (the June-2026 freeze).
+    old = (datetime.now(timezone.utc) - timedelta(hours=48)).isoformat()
+    rows = [dict(_o(-1), close_ts=old)] * 6
+    d = defensive_state(_FakeJournal(rows), S)
+    assert d.pause is False and d.risk_mult == 0.25
+    assert "recovery" in d.reason
 
 
 def test_defensive_negative_expectancy():

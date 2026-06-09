@@ -137,6 +137,9 @@ class Settings(BaseSettings):
     reflection_use_llm: bool = Field(default=True)
     defensive_loss_streak: int = Field(default=4)       # consecutive losers -> halve risk
     defensive_pause_streak: int = Field(default=6)      # consecutive losers -> pause new entries
+    # Pause cooldown: without it the pause is a deadlock (no trades -> no new outcome -> paused
+    # forever). After this many hours past the last losing close, resume at quarter risk.
+    defensive_pause_hours: float = Field(default=24.0)
     # Broker-truth reconciliation: how far back to scan MT5 deals when syncing closed-trade
     # outcomes (repairs gaps from downtime; wide enough to never miss a close).
     reconcile_history_days: int = Field(default=90)
@@ -176,6 +179,14 @@ class Settings(BaseSettings):
     session_filter_enabled: bool = Field(default=True)
     trading_session_start_utc: int = Field(default=7)
     trading_session_end_utc: int = Field(default=17)
+    # ATR-spike guard: reject NEW entries when trigger-TF ATR explodes vs its recent
+    # baseline (unscheduled shocks the news calendar can't see). FAILS OPEN.
+    atr_spike_guard_enabled: bool = Field(default=True)
+    atr_spike_mult: float = Field(default=2.8)
+    # Daily trend-regime gate (lab: backtest.daily_regime): BUY needs pbull >= threshold,
+    # SELL needs pbull <= 1 - threshold, from completed DAILY bars. FAILS OPEN.
+    daily_regime_gate_enabled: bool = Field(default=False)
+    daily_regime_pbull_threshold: float = Field(default=0.52)
     # Weekend flat: close all positions before the Friday close; grace after Sunday reopen.
     weekend_flat_enabled: bool = Field(default=True)
     weekend_flat_hour_utc: int = Field(default=20)
