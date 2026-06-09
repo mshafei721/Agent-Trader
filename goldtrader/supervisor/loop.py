@@ -182,6 +182,7 @@ class Supervisor:
         cached_bias = self.bias_provider._load() if s.bias_exit_enabled else None
         tick = self.client.get_tick()
         eps = spec.point
+        status = []  # one manage_status line per cycle = visible heartbeat of this loop
         for p in positions:
             order = self.journal.order_for_ticket(p.ticket)
             init_sl = order["sl"] if order and order["sl"] else p.sl
@@ -193,6 +194,10 @@ class Supervisor:
             cur = tick.bid if is_buy else tick.ask
             profit_dist = (cur - p.price_open) if is_buy else (p.price_open - cur)
             r_now = profit_dist / r_dist
+            status.append({"ticket": p.ticket, "side": "BUY" if is_buy else "SELL",
+                           "lots": p.volume, "r_now": round(r_now, 2),
+                           "profit": round(float(p.profit), 2),
+                           "sl": round(float(p.sl), spec.digits) if p.sl else None})
 
             # 0) BIAS-AWARE EXIT: cached LLM bias opposes this position -> close or tighten
             if s.bias_exit_enabled and should_bias_exit(
@@ -248,6 +253,8 @@ class Supervisor:
                 if res.ok:
                     log.info("trail_sl", ticket=p.ticket, new_sl=round(new_sl, spec.digits),
                              r_now=round(r_now, 2))
+        if status:
+            log.info("manage_status", positions=status)
 
     def _close_all_positions(self, reason: str) -> None:
         """Flatten every open position (respects DRY_RUN). Used by the weekend-flat guard."""
@@ -363,6 +370,32 @@ class Supervisor:
             sg = guards.entry_spread_ok(spread_pts, s)
             if not sg.allowed:
                 log.info("spread_guard_triggered", reason=sg.reason)
+                return
+        # ATR-spike guard: unscheduled volatility shock (complements the news blackout; FAILS OPEN)
+        if s.atr_spike_guard_enabled:
+            try:
+                spike_bars = self.client.get_rates(_tf(s.trigger_timeframe), s.atr_period + 40)
+                spike_ratio = indicators.atr_spike_ratio(spike_bars, s.atr_period)
+            except Exception as exc:  # noqa: BLE001 — quality filter: never block on its failure
+                log.warning("atr_spike_read_failed_proceeding", error=str(exc))
+                spike_ratio = float("nan")
+            spike = guards.entry_atr_spike_ok(spike_ratio, s)
+            if not spike.allowed:
+                log.warning("atr_spike_guard_triggered", reason=spike.reason)
+                return
+        # daily trend-regime gate: direction must agree with the daily regime (FAILS OPEN)
+        if s.daily_regime_gate_enabled:
+            from ..backtest.daily_regime import pbull_latest, regime_allows
+            try:
+                d1_bars = self.client.get_rates(_tf("D1"), 320)
+                pb = pbull_latest(d1_bars)
+            except Exception as exc:  # noqa: BLE001 — quality filter: never block on failure
+                log.warning("daily_regime_read_failed_proceeding", error=str(exc))
+                pb = None
+            if pb is not None and not regime_allows(
+                tech.side == Action.BUY, pb, s.daily_regime_pbull_threshold
+            ):
+                log.info("daily_regime_gate_triggered", side=tech.side.value, pbull=round(pb, 3))
                 return
         # COT positioning gate: don't chase a crowded managed-money extreme (FAILS OPEN)
         if s.cot_gate_enabled:
@@ -642,6 +675,12 @@ class Supervisor:
             while slept < interval and not self._stop:
                 time.sleep(min(2.0, interval - slept))
                 slept += 2.0
+                # Keep the dashboard's positions/floating-PnL live between manage
+                # cycles (cheap local MT5 IPC reads; manage_cycle logs real failures).
+                try:
+                    self._write_account_snapshot(self.client.equity())
+                except Exception:  # noqa: BLE001
+                    pass
         self.client.shutdown()
         log.info("supervisor_stopped")
 
