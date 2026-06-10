@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import time
 from pathlib import Path
 
@@ -29,3 +30,30 @@ def heartbeat_age(path: Path) -> float:
     if not hb:
         return float("inf")
     return time.time() - float(hb.get("ts", 0))
+
+
+def pid_alive(pid) -> bool:
+    """True if a process with this pid currently exists (Windows + POSIX)."""
+    try:
+        pid = int(pid)
+    except (TypeError, ValueError):
+        return False
+    if pid <= 0:
+        return False
+    if sys.platform == "win32":
+        import ctypes
+
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        handle = ctypes.windll.kernel32.OpenProcess(
+            PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        if not handle:
+            return False
+        ctypes.windll.kernel32.CloseHandle(handle)
+        return True
+    try:
+        os.kill(pid, 0)  # signal 0 = existence probe on POSIX
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True

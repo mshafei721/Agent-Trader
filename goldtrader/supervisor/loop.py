@@ -11,6 +11,7 @@ double-enters a position.
 from __future__ import annotations
 
 import json
+import os
 import signal as os_signal
 import time
 from datetime import datetime, timedelta, timezone
@@ -19,7 +20,7 @@ from ..config import get_settings
 from ..feeds.calendar import EconomicCalendar
 from ..feeds.cot import CotProvider
 from ..healing.circuit_breaker import CircuitBreaker
-from ..healing.heartbeat import write_heartbeat
+from ..healing.heartbeat import pid_alive, read_heartbeat, write_heartbeat
 from ..learning.journal import Journal
 from ..learning.reconcile import aggregate_closed_positions, close_iso
 from ..learning.reflection import ReflectionEngine, defensive_state
@@ -65,6 +66,15 @@ class Supervisor:
 
     def startup(self):
         self.client.connect()
+        # Stamp liveness BEFORE the slow bias warm-up. After a reboot the heartbeat
+        # file still holds the pre-reboot beat; without this, the watchdog judges the
+        # booting supervisor stale and relaunches a new one every check (the 2026-06-10
+        # stampede: 18 stacked supervisors, each stuck in a minutes-long LLM warm-up).
+        write_heartbeat(self.s.heartbeat_file, {
+            "symbol": self.client.symbol,
+            "dry_run": self.s.dry_run,
+            "trade_mode": self.client.trade_mode,
+        })
         eq = self.client.equity()
         self.state.roll_day_if_needed(eq)
         self.state.save(self.s.state_file)
@@ -624,9 +634,25 @@ class Supervisor:
                 self.entry_cycle()
 
     # ---------------- run ----------------
+    def _another_supervisor_alive(self) -> bool:
+        """True when the heartbeat file shows a FRESH beat from a different, still-running
+        process — i.e. a second supervisor would double-trade the account."""
+        hb = read_heartbeat(self.s.heartbeat_file)
+        if not hb:
+            return False
+        fresh_s = max(3 * self.s.manage_interval_seconds, 180)
+        age = time.time() - float(hb.get("ts", 0))
+        pid = hb.get("pid")
+        return bool(age <= fresh_s and pid and int(pid) != os.getpid() and pid_alive(pid))
+
     def run(self):
         os_signal.signal(os_signal.SIGINT, self.request_stop)
         os_signal.signal(os_signal.SIGTERM, self.request_stop)
+        # Single-instance guard: never let two supervisors trade the same account.
+        if self._another_supervisor_alive():
+            log.error("duplicate_supervisor_exit",
+                      reason="a live supervisor already owns the heartbeat")
+            return
         self.startup()
         last_entry = 0.0
         entry_period = self.s.interval_minutes * 60
