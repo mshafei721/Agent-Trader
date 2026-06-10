@@ -559,6 +559,20 @@ class Supervisor:
         longs = [p for p in self.client.get_open_positions() if p.type == 0]
         cur_lots = round(sum(float(p.volume) for p in longs), 8)
         base = min(s.core_base_lots, s.max_lots_absolute)
+        # Entry-regime gate: never INCREASE the allocation while the daily regime is bearish
+        # (the 2026-06-10 trade bought long at pbull 0.08 and bled $1k). Holds/decreases are
+        # unaffected — the lab showed regime EXITS destroy the edge, deferred BUYS don't.
+        if s.core_entry_regime_floor > 0 and base > 0 and target * base > cur_lots:
+            from ..backtest.daily_regime import pbull_latest
+            try:
+                pb = pbull_latest(self.client.get_rates(_tf("D1"), 320))
+            except Exception as exc:  # noqa: BLE001 — fail open, like the other regime gates
+                log.warning("core_regime_read_failed_proceeding", error=str(exc))
+                pb = None
+            if pb is not None and pb < s.core_entry_regime_floor:
+                log.info("core_entry_regime_hold", pbull=round(pb, 3),
+                         deferred_target=round(target, 3))
+                target = cur_lots / base
         delta = rebalance_lots(target, cur_lots, base, vol_step=spec.volume_step,
                                vol_min=spec.volume_min, max_lots=s.max_lots_absolute,
                                threshold=s.core_rebalance_threshold)

@@ -154,6 +154,10 @@ class Settings(BaseSettings):
     core_base_lots: float = Field(default=0.10)            # lots at full (1.0) exposure; clamped by max_lots_absolute
     core_rebalance_threshold: float = Field(default=0.10)  # min exposure change to act (anti-churn)
     core_catastrophic_stop_pct: float = Field(default=20.0)  # wide backstop SL below entry (held, no TP)
+    # Entry-regime gate (lab 2026-06-11): never INCREASE the core while the daily regime is
+    # bearish (pbull < floor). Holds/decreases unaffected — a regime EXIT tested worse
+    # (Sharpe 0.67 -> 0.54); deferring buys costs only ~0.5%/yr and prevents buying a downtrend.
+    core_entry_regime_floor: float = Field(default=0.48)   # 0 = disabled
 
     # ---------- Cadence ----------
     interval_minutes: int = Field(default=15)
